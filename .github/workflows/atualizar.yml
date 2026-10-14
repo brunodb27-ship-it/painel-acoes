@@ -1,0 +1,38 @@
+   name: Atualizar dados
+
+   on:
+     schedule:
+       - cron: "30 22 * * 1-5"   # 19h30 de Brasília, dias úteis (depois do fechamento)
+     workflow_dispatch: {}        # botão "Run workflow" para rodar na hora
+
+   permissions:
+     contents: write
+
+   concurrency:
+     group: atualizar
+     cancel-in-progress: false
+
+   jobs:
+     atualizar:
+       runs-on: ubuntu-latest
+       timeout-minutes: 40
+       steps:
+         - uses: actions/checkout@v4
+
+         - uses: actions/setup-python@v5
+           with:
+             python-version: "3.12"
+             cache: pip
+
+         - run: pip install -r requirements.txt
+
+         - name: Buscar CVM, cotações, dividendos, CDI e IPCA
+           run: python pipeline/atualizar.py
+
+         - name: Salvar os dados no repositório
+           run: |
+             git config user.name "robo-painel"
+             git config user.email "robo-painel@users.noreply.github.com"
+             git add docs/data
+             git diff --cached --quiet || git commit -m "Dados atualizados $(date -u +%Y-%m-%d)"
+             git push
