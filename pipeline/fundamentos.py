@@ -33,6 +33,18 @@ def _member(z: zipfile.ZipFile, part: str) -> str | None:
     return None
 
 
+def load_docs(zips: list[Path]) -> dict[str, pd.DataFrame]:
+    """Junta vários anos do mesmo documento (ex.: DFP 2025 + DFP 2024).
+    Cada empresa usa depois o seu documento mais recente, então quem ainda não
+    entregou o balanço do ano fica com o do ano anterior em vez de sumir."""
+    partes = [load_doc(z) for z in zips]
+    out = {}
+    for key in {k for p in partes for k in p}:
+        dfs = [p[key] for p in partes if key in p]
+        out[key] = pd.concat(dfs, ignore_index=True).drop_duplicates() if len(dfs) > 1 else dfs[0]
+    return out
+
+
 def load_doc(zip_path: Path) -> dict[str, pd.DataFrame]:
     """Lê do zip (DFP ou ITR) só as demonstrações consolidadas usadas no cálculo."""
     out = {}
@@ -50,20 +62,38 @@ def load_doc(zip_path: Path) -> dict[str, pd.DataFrame]:
     return out
 
 
-def load_tickers(fca_zip: Path) -> pd.DataFrame:
-    with zipfile.ZipFile(fca_zip) as z:
-        vm = _read(z, _member(z, "valor_mobiliario"))
-        geral = _read(z, _member(z, "geral"))
-    vm = vm[(vm["Mercado"] == "Bolsa") & vm["Codigo_Negociacao"].notna() & vm["Data_Fim_Negociacao"].isna()]
+def load_tickers(fca_zips) -> pd.DataFrame:
+    """Códigos de negociação ativos, juntando o cadastro (FCA) de mais de um ano.
+    O FCA do ano corrente vem incompleto até as empresas reapresentarem o formulário;
+    o do ano anterior cobre as que faltam. Para cada código vale o registro mais novo."""
+    if isinstance(fca_zips, (str, Path)):
+        fca_zips = [fca_zips]
+    vms, gerais = [], []
+    ano_de = lambda zp: int((re.findall(r"(\d{4})\.zip$", str(zp)) or ["0"])[0])
+    for zp in sorted(fca_zips, key=ano_de):  # do ano mais antigo para o mais novo
+        with zipfile.ZipFile(zp) as z:
+            vm = _read(z, _member(z, "valor_mobiliario"))
+            geral = _read(z, _member(z, "geral"))
+        vm["_ano"] = ano_de(zp)
+        geral["_ano"] = ano_de(zp)
+        vms.append(vm)
+        gerais.append(geral)
+    vm = pd.concat(vms, ignore_index=True)
+    geral = pd.concat(gerais, ignore_index=True)
+    vm["_v"] = pd.to_numeric(vm["Versao"], errors="coerce").fillna(0)
+    geral["_v"] = pd.to_numeric(geral["Versao"], errors="coerce").fillna(0)
+    vm = vm[(vm["Mercado"] == "Bolsa") & vm["Codigo_Negociacao"].notna()]
     vm = vm[vm["Codigo_Negociacao"].str.match(r"^[A-Z]{4}\d{1,2}$")]
-    vm = vm.sort_values("Versao").drop_duplicates(["CNPJ_Companhia", "Codigo_Negociacao"], keep="last")
-    cols = {c: c for c in geral.columns}
+    # registro mais novo de cada código; só depois filtra os que deixaram de negociar
+    vm = vm.sort_values(["_ano", "_v"]).drop_duplicates(["CNPJ_Companhia", "Codigo_Negociacao"], keep="last")
+    vm = vm[vm["Data_Fim_Negociacao"].isna()]
+    vm = vm.drop_duplicates("Codigo_Negociacao", keep="last")
     setor_col = next((c for c in geral.columns if "Setor" in c), None)
-    g = geral.sort_values("Versao").drop_duplicates("CNPJ_Companhia", keep="last")
+    g = geral.sort_values(["_ano", "_v"]).drop_duplicates("CNPJ_Companhia", keep="last")
     g = g[["CNPJ_Companhia"] + ([setor_col] if setor_col else [])].rename(columns={setor_col: "setor"} if setor_col else {})
     t = vm[["CNPJ_Companhia", "Nome_Empresarial", "Codigo_Negociacao", "Valor_Mobiliario", "Segmento"]].merge(g, on="CNPJ_Companhia", how="left")
     t.columns = ["cnpj", "empresa", "ticker", "tipo", "segmento"] + (["setor"] if setor_col else [])
-    return t
+    return t.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------- helpers de conta
@@ -157,6 +187,8 @@ def compute(dfp: dict, itr: dict, tickers: pd.DataFrame) -> pd.DataFrame:
             d_itr = None
         if d_itr and d_dfp and d_itr <= d_dfp:
             d_itr = None
+        # 12 meses só fecham se o ITR for do ano seguinte ao último balanço anual
+        ttm_ok = bool(d_itr and d_dfp and int(d_itr[:4]) == int(d_dfp[:4]) + 1)
         # --- fluxos 12m
         fa = _flows(_rows(S(dfp, "DRE_con", cnpj), cnpj, d_dfp), _rows(S(dfp, "DVA_con", cnpj), cnpj, d_dfp)) if d_dfp else {}
         if d_itr:
@@ -165,7 +197,7 @@ def compute(dfp: dict, itr: dict, tickers: pd.DataFrame) -> pd.DataFrame:
         else:
             fb, fc = {}, {}
         for k in ["lucro", "receita", "bruto", "ebit", "da", "proventos"]:
-            r[k + "_12m"] = _ttm(fa.get(k), fb.get(k), fc.get(k)) if d_itr else fa.get(k)
+            r[k + "_12m"] = _ttm(fa.get(k), fb.get(k), fc.get(k)) if ttm_ok else fa.get(k)
         # --- estoque (balanço mais recente)
         src, dt = (itr, d_itr) if d_itr else (dfp, d_dfp)
         r["data_balanco"] = dt
@@ -200,7 +232,7 @@ def compute(dfp: dict, itr: dict, tickers: pd.DataFrame) -> pd.DataFrame:
 def indicadores(base: pd.DataFrame, precos: dict[str, float]) -> pd.DataFrame:
     """Junta preço por ticker e calcula os indicadores de mercado."""
     b = base.copy()
-    b["preco"] = b["ticker"].map(precos)
+    b["preco"] = pd.to_numeric(b["ticker"].map(precos), errors="coerce").astype(float)
     # algumas empresas informam a quantidade de ações em milhares (ex.: Itaú).
     # Se o VPA ficar mais de 100x acima do preço, a quantidade está em milhares.
     vpa0 = b["patrimonio"] / b["acoes"]
@@ -220,8 +252,8 @@ def indicadores(base: pd.DataFrame, precos: dict[str, float]) -> pd.DataFrame:
         pon = p_on.iloc[0] if len(p_on) else p_any.iloc[0]
         ppn = p_pn.iloc[0] if len(p_pn) else p_any.iloc[0]
         return on * pon + pn * ppn
-    vmap = b.groupby("cnpj").apply(vm, include_groups=False)
-    b["valor_mercado"] = b["cnpj"].map(vmap)
+    vmap = {c: vm(g) for c, g in b.groupby("cnpj")}
+    b["valor_mercado"] = pd.to_numeric(b["cnpj"].map(vmap), errors="coerce").astype(float)
     s = lambda a, c: a / c if (a is not None and c not in (None, 0)) else None
     b["lpa"] = b["lucro_12m"] / b["acoes"]
     b["vpa"] = b["patrimonio"] / b["acoes"]

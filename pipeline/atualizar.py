@@ -75,6 +75,21 @@ def primeiro_disponivel(doc: str, anos: list[int], local: Path | None) -> tuple[
     raise SystemExit(f"Nenhum arquivo {doc} encontrado para {anos}")
 
 
+def todos_disponiveis(doc: str, anos: list[int], local: Path | None) -> tuple[list[Path], int]:
+    """Baixa todos os anos pedidos que existirem. Devolve os arquivos e o ano mais recente."""
+    achados = []
+    for a in anos:
+        p = zip_cvm(doc, a, local)
+        if p:
+            log(f"{doc} {a}: ok")
+            achados.append((a, p))
+        else:
+            log(f"{doc} {a}: não encontrado")
+    if not achados:
+        raise SystemExit(f"Nenhum arquivo {doc} encontrado para {anos}")
+    return [p for _, p in achados], max(a for a, _ in achados)
+
+
 # ------------------------------------------------------------------ cotações (Yahoo)
 def cotacoes(tickers: list[str], sufixo: str = ".SA") -> tuple[dict, dict]:
     """Retorna (resumo por ticker, histórico mensal por ticker). B3 usa o sufixo .SA no Yahoo."""
@@ -231,14 +246,20 @@ def main():
 
     # --- CVM
     y = HOJE.year
-    dfp_zip, dfp_ano = primeiro_disponivel("DFP", [y, y - 1, y - 2], a.local)
-    itr_zip, itr_ano = primeiro_disponivel("ITR", [y, y - 1], a.local)
-    fca_zip, _ = primeiro_disponivel("FCA", [y, y - 1], a.local)
-    log("lendo DFP"); dfp = F.load_doc(dfp_zip)
-    log("lendo ITR"); itr = F.load_doc(itr_zip) if itr_ano > dfp_ano else {k: v.iloc[0:0] for k, v in dfp.items()}
-    tk = F.load_tickers(fca_zip)
-    log("calculando fundamentos de", tk["cnpj"].nunique(), "empresas")
+    # O DFP do ano corrente quase não tem empresas (só as de exercício fora do calendário),
+    # por isso o anual começa no ano anterior. Juntamos dois anos de cada documento:
+    # cada empresa usa o seu balanço mais recente e ninguém some por atraso de entrega.
+    dfp_zips, dfp_ano = todos_disponiveis("DFP", [y - 1, y - 2], a.local)
+    itr_zips, itr_ano = todos_disponiveis("ITR", [y, y - 1], a.local)
+    fca_zips, _ = todos_disponiveis("FCA", [y, y - 1], a.local)
+    log("lendo DFP"); dfp = F.load_docs(dfp_zips)
+    log("lendo ITR"); itr = F.load_docs(itr_zips)
+    tk = F.load_tickers(fca_zips)
+    log("cadastro:", tk["cnpj"].nunique(), "empresas,", len(tk), "códigos")
     base = F.compute(dfp, itr, tk)
+    log("fundamentos calculados para", base["cnpj"].nunique(), "empresas,", len(base), "códigos")
+    if len(base) < 100 and not a.local:
+        raise SystemExit(f"Só {len(base)} códigos com balanço; algo veio errado da CVM. Mantendo os dados anteriores.")
 
     # --- preços
     resumo, hist = {}, {}
