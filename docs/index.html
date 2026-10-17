@@ -443,7 +443,7 @@ function simBench(labels, valor, aporte, kind){
 }
 
 function vSim(){
-  const s=S.sim; if(!s.tk) s.tk=S.tk||'ITUB4';
+  const s=S.sim; if(S.tk&&S.tk!==s.vistoTk){ s.tk=S.tk; s.vistoTk=S.tk; } if(!s.tk) s.tk='ITUB4';
   const hasMacro=S.macro&&S.macro.cdi&&Object.keys(S.macro.cdi).length;
   const it=S.cart.itens;
   const tkField = s.modo==='uma'
