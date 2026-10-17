@@ -1,0 +1,11 @@
+# ETFs da B3 (um por linha: CÓDIGO;nome). Linhas com # são ignoradas.
+BOVA11;iShares Ibovespa
+BOVV11;It Now Ibovespa
+SMAL11;iShares Small Cap
+DIVO11;It Now IDIV (dividendos)
+IVVB11;iShares S&P 500 (em reais)
+SPXI11;It Now S&P 500 (em reais)
+NASD11;Trend Nasdaq 100 (em reais)
+GOLD11;Trend Ouro
+FIND11;It Now Financeiro
+ECOO11;iShares Carbono Eficiente

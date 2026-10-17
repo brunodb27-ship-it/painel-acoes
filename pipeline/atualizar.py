@@ -212,6 +212,39 @@ def eua() -> tuple[list[dict], dict]:
     return linhas, hist
 
 
+# ------------------------------------------------------------------ ETFs da B3 e índices
+INDICES = {"^BVSP": ("IBOV", "Índice Ibovespa", "Brasil", "BRL"),
+           "^GSPC": ("SPX", "Índice S&P 500", "EUA", "USD"),
+           "^NDX": ("NDX", "Índice Nasdaq 100", "EUA", "USD")}
+
+
+def etfs_e_indices() -> tuple[list[dict], dict]:
+    """ETFs da B3 (lista em pipeline/etfs_br.txt) e os índices, só com cotação e histórico."""
+    linhas, hist = [], {}
+    arq = Path(__file__).parent / "etfs_br.txt"
+    nomes = {}
+    for ln in arq.read_text(encoding="utf-8").splitlines():
+        ln = ln.strip()
+        if ln and not ln.startswith("#"):
+            t, _, n = ln.partition(";")
+            nomes[t.strip().upper()] = n.strip() or t.strip().upper()
+    res, h = cotacoes(sorted(nomes), sufixo=".SA")
+    for t, r in res.items():
+        linhas.append({**r, "ticker": t, "empresa": nomes[t], "setor": "ETF", "segmento": "ETF B3",
+                       "tipo": "ETF", "banco": False, "mercado": "Brasil", "moeda": "BRL"})
+    hist.update(h)
+    res, h = cotacoes(list(INDICES), sufixo="")
+    for sym, r in res.items():
+        t, nome, merc, moeda = INDICES[sym]
+        r = {**r, "dpa_12m": None, "dy": None}
+        linhas.append({**r, "ticker": t, "empresa": nome, "setor": "Índice", "segmento": "Índice",
+                       "tipo": "Índice (não se compra direto; use um ETF)", "banco": False,
+                       "mercado": merc, "moeda": moeda})
+        if sym in h:
+            hist[t] = h[sym]
+    return linhas, hist
+
+
 # ------------------------------------------------------------------ saída
 def limpo(v):
     if v is None:
@@ -285,6 +318,13 @@ def main():
             log("EUA:", len(us), "ativos")
         except Exception as e:  # noqa: BLE001
             log("EUA falhou, seguindo só com a B3:", e)
+        try:
+            ex, hist_ex = etfs_e_indices()
+            linhas += [{k: limpo(r.get(k)) for k in CAMPOS} for r in ex]
+            hist.update(hist_ex)
+            log("ETFs B3 e índices:", len(ex))
+        except Exception as e:  # noqa: BLE001
+            log("ETFs/índices falharam, seguindo sem eles:", e)
     (SAIDA / "indicadores.json").write_text(json.dumps(linhas, ensure_ascii=False, separators=(",", ":")))
     for t, h in hist.items():
         (SAIDA / "hist" / f"{t}.json").write_text(json.dumps(h, separators=(",", ":")))
