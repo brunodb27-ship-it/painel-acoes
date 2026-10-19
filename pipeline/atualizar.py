@@ -30,6 +30,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 import fundamentos as F  # noqa: E402
+import historico as H  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 SAIDA = RAIZ / "docs" / "data"
@@ -267,6 +268,17 @@ CAMPOS = ["ticker", "empresa", "mercado", "moeda", "setor", "segmento", "tipo", 
           "liq_corrente", "lucro_12m", "receita_12m", "ebitda_12m", "patrimonio", "divida_bruta", "caixa", "acoes"]
 
 
+def _ler_hist() -> dict:
+    """Usa os históricos já salvos (modo de teste sem cotações)."""
+    out = {}
+    for p in (SAIDA / "hist").glob("*.json"):
+        try:
+            out[p.stem] = json.loads(p.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local", type=Path, help="pasta com os zips da CVM (teste)")
@@ -333,6 +345,18 @@ def main():
         macro = {"cdi": serie_bcb(4391), "ipca": serie_bcb(433), "ibov": serie_yahoo("^BVSP"),
                  "usdbrl": serie_yahoo("BRL=X"), "sp500": serie_yahoo("^GSPC")}
         (SAIDA / "macro.json").write_text(json.dumps(macro, separators=(",", ":")))
+
+    # --- histórico anual e ranking por período (não derruba o resto se falhar)
+    try:
+        anual = H.atualizar_anual(SAIDA / "anual.json", dfp_ano, lambda ano: zip_cvm("DFP", ano, a.local),
+                                  tk, log, apagar_zip=not a.local)
+        ult = H.ultimo_ano_completo(anual) or dfp_ano
+        cnpj_de = dict(zip(b["ticker"], b["cnpj"]))
+        rk = H.ranking(linhas, hist if hist else _ler_hist(), anual, ult, HOJE.strftime("%Y-%m"), cnpj_de)
+        (SAIDA / "ranking.json").write_text(json.dumps(rk, ensure_ascii=False, separators=(",", ":")))
+        log("ranking:", len(rk["dados"]), "ativos; balanços", rk["primeiro_balanco"], "a", ult)
+    except Exception as e:  # noqa: BLE001
+        log("ranking falhou, seguindo sem ele:", e)
 
     meta = {
         "atualizado_em": dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).strftime("%Y-%m-%d %H:%M"),
