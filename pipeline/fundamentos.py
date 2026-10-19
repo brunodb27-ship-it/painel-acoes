@@ -154,6 +154,12 @@ def _flows(dre, dva):
     da = _first(dva, DA) if dva is not None else None
     jcp = _sum(dva, JCP, prefix="7.08") if dva is not None else None
     div = _sum(dva, DIVID, prefix="7.08") if dva is not None else None
+    for pref in ("7.09", "7.10", "7.11"):
+        # bancos e seguradoras usam outro modelo de DVA: a distribuição fica mais abaixo
+        if jcp is not None or div is not None or dva is None:
+            break
+        jcp = _sum(dva, JCP, prefix=pref)
+        div = _sum(dva, DIVID, prefix=pref)
     prov = (jcp or 0) + (div or 0) if (jcp is not None or div is not None) else None
     return dict(lucro=lucro, receita=receita, bruto=bruto, ebit=ebit, da=abs(da) if da is not None else None, proventos=prov)
 

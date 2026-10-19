@@ -20,6 +20,7 @@ import fundamentos as F
 
 PRIMEIRO_ANO = 2010
 JANELAS = [5, 10, 15, 20]
+VERSAO = 2  # aumente quando mudar o cálculo dos anos, para refazer o histórico inteiro
 CAMPOS_ANO = ["receita", "ebit", "lucro", "patrimonio", "proventos", "acoes_on", "acoes_pn", "banco"]
 
 
@@ -56,6 +57,8 @@ def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.Data
         hist = json.loads(arquivo.read_text())
     except Exception:  # noqa: BLE001
         hist = {"anos": [], "dados": {}}
+    if hist.get("versao") != VERSAO:  # mudou a forma de calcular: refaz todos os anos
+        hist = {"anos": [], "dados": {}}
     feitos = set(hist.get("anos", []))
     for ano in range(PRIMEIRO_ANO, ultimo_ano + 1):
         if ano in feitos and ano < ultimo_ano - 1:
@@ -82,6 +85,7 @@ def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.Data
         except Exception:  # noqa: BLE001
             pass
     hist["anos"] = sorted(feitos)
+    hist["versao"] = VERSAO
     arquivo.write_text(json.dumps(hist, ensure_ascii=False, separators=(",", ":")))
     return hist
 
@@ -225,9 +229,11 @@ def ranking(linhas: list[dict], hist: dict, anual: dict, ultimo_balanco: int, me
                 for x in regs_ok:
                     rec, eb, ll, pl = x.get("receita"), x.get("ebit"), x.get("lucro"), x.get("patrimonio")
                     if not banco and rec and rec > 0:
-                        if eb is not None:
+                        # margem acima de 100% é holding ou empresa de participações:
+                        # a receita não representa o negócio, então o ano fica de fora
+                        if eb is not None and -1 <= eb / rec <= 1:
                             me.append(eb / rec)
-                        if ll is not None:
+                        if ll is not None and -1 <= ll / rec <= 1:
                             ml.append(ll / rec)
                     if ll is not None and pl and pl > 0:
                         roe.append(ll / pl)
