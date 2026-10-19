@@ -11,7 +11,7 @@
 /* Layout: barra fixa com marca, busca e abas; abaixo, uma "mesa" por aba (buscador, ficha, simulador). Números em mono tabular. */
 :root{
   --bg:#0d131b; --panel:#141c27; --panel2:#1a2431; --line:#253244; --fg:#e6ecf3; --muted:#8798ad; --faint:#5d6d82;
-  --accent:#e8ae45; --accent-ink:#1b1305; --accent-soft:rgba(232,174,69,.14);
+  --accent:#e8ae45; --accent-ink:#1b1305; --fib-chave:#F0B429;--fib-ext:#39C2D7;--fib-nivel:#AAB6B0;--accent-soft:rgba(232,174,69,.14);
   --up:#3ec28f; --down:#ee6672; --up-soft:rgba(62,194,143,.13); --down-soft:rgba(238,102,114,.13);
   --s1:#e8ae45; --s2:#5aa9e6; --s3:#b48ae0; --s4:#8798ad;
   --c1:#e8ae45; --c2:#5aa9e6; --c3:#b48ae0; --c4:#3ec28f; --c5:#f08a5d; --c6:#45c4c4; --c7:#e07bb5; --c8:#a9c95b; --c9:#c9a27a; --c10:#8f9bff;
@@ -20,13 +20,13 @@
 }
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
   --bg:#f2f4f7; --panel:#fff; --panel2:#eef1f5; --line:#d8dfe8; --fg:#111923; --muted:#5a687a; --faint:#8a97a8;
-  --accent:#a86d06; --accent-ink:#fff; --accent-soft:rgba(168,109,6,.10);
+  --accent:#a86d06; --accent-ink:#fff; --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;--accent-soft:rgba(168,109,6,.10);
   --up:#0d8457; --down:#c4323f; --up-soft:rgba(13,132,87,.09); --down-soft:rgba(196,50,63,.09);
   --s1:#a86d06; --s2:#2f6fb0; --s3:#7a4fb3; --s4:#6b7a8c;
   --c1:#b07a12; --c2:#2f6fb0; --c3:#7a4fb3; --c4:#12855a; --c5:#c4562a; --c6:#16858a; --c7:#b0407e; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}}
 :root[data-theme="light"]{
   --bg:#f2f4f7; --panel:#fff; --panel2:#eef1f5; --line:#d8dfe8; --fg:#111923; --muted:#5a687a; --faint:#8a97a8;
-  --accent:#a86d06; --accent-ink:#fff; --accent-soft:rgba(168,109,6,.10);
+  --accent:#a86d06; --accent-ink:#fff; --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;--accent-soft:rgba(168,109,6,.10);
   --up:#0d8457; --down:#c4323f; --up-soft:rgba(13,132,87,.09); --down-soft:rgba(196,50,63,.09);
   --s1:#a86d06; --s2:#2f6fb0; --s3:#7a4fb3; --s4:#6b7a8c;
   --c1:#b07a12; --c2:#2f6fb0; --c3:#7a4fb3; --c4:#12855a; --c5:#c4562a; --c6:#16858a; --c7:#b0407e; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}
@@ -104,6 +104,21 @@ th.hl{color:var(--accent)}
 .ind{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .ind:last-child{border-bottom:0}
 .ind .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.ind .ref{display:block;font-size:10.5px;color:var(--muted);text-align:right;font-family:var(--f-body)}
+.ind .ref.bom{color:var(--up)} .ind .ref.ruim{color:var(--down)}
+.fibrow{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:12px 0 0}
+.fibrow .fld{display:grid;gap:3px}
+.fibrow .fld b{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.fibrow input[type=number]{width:110px}
+.btn.armed{border-color:var(--fib-chave);color:var(--fib-chave);background:var(--accent-soft)}
+.fibopts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12px;color:var(--muted)}
+.fibopts label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.fibwrap{display:grid;grid-template-columns:1fr 230px;gap:14px;align-items:start;margin-top:10px}
+@media(max-width:760px){.fibwrap{grid-template-columns:1fr}}
+.fibtbl td,.fibtbl th{padding:5px 8px}
+.fibtbl tr.lv0 td,.fibtbl tr.lv100 td{color:var(--fib-chave);font-weight:600}
+.fibtbl tr.lvx td{color:var(--fib-ext)}
+.fibtbl tr.perto td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .ind span[title]{cursor:help;text-decoration:underline dotted var(--faint);text-underline-offset:3px}
 .chart-box{position:relative;height:320px}
 #ch-hist{touch-action:none;cursor:crosshair}
@@ -179,7 +194,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 // ===================== estado =====================
 const S = { tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
-  range:'10', modo:'preco', sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true},
+  range:'10', modo:'preco', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
   cart:{itens:['ITUB4','PETR4','WEGE3','BBAS3'].map(tk=>({tk,p:''}))}, charts:{} };
 
@@ -201,6 +216,8 @@ const fU=v=>ok(v)?v.toLocaleString('pt-BR',{style:'currency',currency:'USD'}):'�
 const money=(v,cur)=>cur==='USD'?fU(v):fR(v);
 const fBc=(v,cur)=>{ if(cur!=='USD') return fB(v); if(!ok(v)) return '—'; const a=Math.abs(v); if(a>=1e12) return 'US$ '+fN(v/1e12,2)+' tri'; if(a>=1e9) return 'US$ '+fN(v/1e9,2)+' bi'; if(a>=1e6) return 'US$ '+fN(v/1e6,1)+' mi'; if(a>=1e3) return 'US$ '+fN(v/1e3,0)+' mil'; return fU(v); };
 const curRow=r=>(r&&r.moeda)||'BRL';
+// DY: o dos dividendos pagos (Yahoo); se vier zerado ou faltando numa ação da B3, usa o declarado à CVM
+const dyDe=r=>(ok(r.dy)&&r.dy>0)?r.dy:(ok(r.dy_cvm)?r.dy_cvm:r.dy);
 
 // ===================== dados =====================
 async function getJSON(p){ const r=await fetch(p,{cache:'no-cache'}); if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }
@@ -288,12 +305,12 @@ function filtered(){
   if(isFinite(n(f.plMin))) r=r.filter(x=>ok(x.pl)&&x.pl>=n(f.plMin));
   if(isFinite(n(f.plMax))) r=r.filter(x=>ok(x.pl)&&x.pl<=n(f.plMax));
   if(f.pvpMax) r=r.filter(x=>ok(x.pvp)&&x.pvp<=f.pvpMax);
-  if(isFinite(n(f.dyMin))) r=r.filter(x=>ok(x.dy??x.dy_cvm)&&(x.dy??x.dy_cvm)*100>=n(f.dyMin));
+  if(isFinite(n(f.dyMin))) r=r.filter(x=>ok(dyDe(x))&&dyDe(x)*100>=n(f.dyMin));
   if(isFinite(n(f.roeMin))) r=r.filter(x=>ok(x.roe)&&x.roe*100>=n(f.roeMin));
   if(isFinite(n(f.dlMax))) r=r.filter(x=>x.banco||(ok(x.div_liq_ebitda)&&x.div_liq_ebitda<=n(f.dlMax)));
   if(isFinite(n(f.liqMin))) r=r.filter(x=>ok(x.liquidez)&&x.liquidez>=n(f.liqMin)*1000);
   const {k,d}=S.sort;
-  return [...r].sort((a,b)=>{ const va=a[k], vb=b[k]; if(typeof va==='string'||typeof vb==='string') return d*String(va??'').localeCompare(String(vb??''));
+  return [...r].sort((a,b)=>{ const va=k==='dy'?dyDe(a):a[k], vb=k==='dy'?dyDe(b):b[k]; if(typeof va==='string'||typeof vb==='string') return d*String(va??'').localeCompare(String(vb??''));
     if(!ok(va)) return 1; if(!ok(vb)) return -1; return d*(va-vb); });
 }
 function cell(r,k){
@@ -302,7 +319,7 @@ function cell(r,k){
     case 'ticker': return `<td class="l"><span class="tk">${esc(v)}</span>${r.moeda==='USD'?'<span class="chip" style="margin-left:6px;padding:0 6px">EUA</span>':''}<div class="co">${esc(r.empresa)}</div></td>`;
     case 'setor': return `<td class="l"><span class="co set" title="${esc(v||'')}">${esc((v||'').replace(/^Emp\. Adm\. Part\. - /,''))}</span></td>`;
     case 'preco': return `<td>${ok(v)?fN(v):'—'}</td>`;
-    case 'dy': { const d=r.dy??r.dy_cvm; return `<td>${fP(d)}</td>`; }
+    case 'dy': { const d=dyDe(r); return `<td>${fP(d)}</td>`; }
     case 'roe': case 'm_liq': return `<td class="${cls(v)}">${fP(v)}</td>`;
     case 'var_12m': return `<td class="${cls(v)}">${fP(v,1,true)}</td>`;
     case 'liquidez': case 'valor_mercado': return `<td>${fBc(v,curRow(r))}</td>`;
@@ -409,11 +426,46 @@ const IND=[
   ['Endividamento',[['div_liq','Dívida líquida','Empréstimos e financiamentos − caixa e aplicações','b'],['div_liq_ebitda','Dív. líq./EBITDA','Quantos anos de EBITDA pagam a dívida líquida','x'],['div_liq_pl','Dív. líq./Patrimônio','','x'],['liq_corrente','Liquidez corrente','Ativo circulante ÷ passivo circulante','x']]],
   ['Dividendos e tamanho',[['dy','DY 12 meses','Proventos pagos em 12 meses ÷ preço','p'],['dpa_12m','Proventos por ação (12m)','','r'],['valor_mercado','Valor de mercado','','b'],['lucro_12m','Lucro 12m','','b'],['receita_12m','Receita 12m','','b'],['patrimonio','Patrimônio','','b']]],
 ];
+// ---- referência do setor: mediana dos pares
+const MENOR_MELHOR=['pl','pvp','psr','ev_ebitda','ev_ebit','div_liq_ebitda','div_liq_pl'];
+const MAIOR_MELHOR=['roe','m_bruta','m_ebit','m_liq','dy','liq_corrente'];
+const _med={};
+function mediana(xs){ if(!xs.length) return null; const a=[...xs].sort((x,y)=>x-y), m=a.length>>1; return a.length%2?a[m]:(a[m-1]+a[m])/2; }
+function valorInd(x,k){ return k==='dy'?dyDe(x):x[k]; }
+function valido(k,v){ if(!ok(v)) return false;
+  if(['pl','pvp','psr','ev_ebitda','ev_ebit'].includes(k)) return v>0&&v<200;   // negativos (prejuízo) e extremos distorcem a mediana
+  if(['m_bruta','m_ebit','m_liq'].includes(k)) return v>-1&&v<=1;
+  if(k==='dy') return v>=0&&v<0.6;
+  return Math.abs(v)<1e3; }
+function refGrupo(r,k){
+  const merc=r.mercado||'Brasil', chave=merc+'|'+(r.setor||'')+'|'+k+'|'+(r.banco?1:0);
+  if(chave in _med) return _med[chave];
+  const pares=S.rows.filter(x=>(x.mercado||'Brasil')===merc&&!/^(ETF|Índice)$/.test(x.setor||''));
+  const porEmp=xs=>{ const vistos=new Set(), out=[]; for(const x of xs){ const id=x.empresa||x.ticker; if(vistos.has(id)) continue; const v=valorInd(x,k); if(valido(k,v)){ vistos.add(id); out.push(v);} } return out; };
+  let vals=porEmp(pares.filter(x=>x.setor===r.setor&&!!x.banco===!!r.banco)), nome='setor';
+  if(vals.length<4){ vals=porEmp(pares.filter(x=>!!x.banco===!!r.banco)); nome=merc==='EUA'?'mercado EUA':'mercado'; }
+  return _med[chave]= vals.length>=4?{m:mediana(vals),n:vals.length,nome}:null;
+}
+function refSetor(r,k,v,t){
+  if(!MENOR_MELHOR.includes(k)&&!MAIOR_MELHOR.includes(k)) return '';
+  if(/^(ETF|Índice)$/.test(r.setor||'')) return '';
+  const g=refGrupo(r,k); if(!g) return '';
+  let tom='';
+  if(valido(k,v)){ const melhor=MENOR_MELHOR.includes(k)?v<g.m:v>g.m; tom=melhor?'bom':'ruim'; }
+  else if(ok(v)&&['pl','ev_ebitda','ev_ebit'].includes(k)&&v<=0) tom='ruim';
+  return `<span class="ref ${tom}" title="Mediana de ${g.n} empresas do ${g.nome}">${g.nome}: ${fmt(g.m,t,curRow(r))}</span>`;
+}
+
+// ---- Fibonacci: 0% no primeiro clique, 100% no segundo; acima de 100% são extensões
+// mesmos níveis e a mesma marcação do Painel Operacional do WIN
+const FIB_NIVEIS=[0,23.6,38.2,50,61.8,76.3,100,111.8,138.2,161.8,200], FIB_EXT=111.8;
+const FIB_DICA='Clique em Marcar e depois no gráfico: o ponto trava no fechamento do mês mais próximo. Ou digite os valores. Fundo → topo marca o menor e o maior preço do período.';
+
 function fmt(v,t,cur){ return t==='p'?fP(v):t==='r'?money(v,cur):t==='b'?fBc(v,cur):fX(v); }
 function vAcao(){
   const r=byTk(S.tk);
   if(!r) return `<div class="card"><div class="empty">Busque uma ação no campo lá em cima ou escolha uma no <a href="#" data-tab="buscador" style="color:var(--accent)">Buscador</a>.</div></div>`;
-  const dy=r.dy??r.dy_cvm;
+  const dy=dyDe(r);
   return `
   <section class="card"><div class="card-b">
    <div class="hero"><div><div class="name">${esc(r.ticker)}</div><div class="sub">${esc(r.empresa)}</div>
@@ -426,13 +478,22 @@ function vAcao(){
      <div style="display:flex;gap:8px;flex-wrap:wrap">
       <div class="seg">${[['1','1A'],['5','5A'],['10','10A'],['20','20A'],['max','Máx']].map(([k,l])=>`<button data-range="${k}" aria-pressed="${S.range===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['preco','Preço'],['total','Com dividendos']].map(([k,l])=>`<button data-modo="${k}" aria-pressed="${S.modo===k}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['medir','Medir'],['fibo','Fibonacci']].map(([k,l])=>`<button data-ferr="${k}" aria-pressed="${S.ferr===k}">${l}</button>`).join('')}</div>
      </div></div>
-    <div class="card-b"><div class="chart-box"><canvas id="ch-hist" aria-label="Gráfico do histórico de preço. Arraste para medir um período."></canvas></div><div class="selbox" id="sel-info"><span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span></div><p class="note" id="hist-note" style="margin:10px 0 0"></p></div></section>
+    <div class="card-b">${S.ferr==='fibo'?`<div class="fibrow" style="margin:0 0 10px">
+      <div class="fld"><b>0%</b><input class="inp mono" type="number" id="fib-p0" step="0.01"></div><button class="btn" id="fib-pick0">Marcar</button>
+      <div class="fld"><b>100%</b><input class="inp mono" type="number" id="fib-p1" step="0.01"></div><button class="btn" id="fib-pick1">Marcar</button>
+      <button class="btn" id="fib-auto">Fundo → topo</button><button class="btn" id="fib-clear">Limpar</button><button class="btn" id="fib-png">Salvar PNG</button></div>`:''}
+    <div class="chart-box"><canvas id="ch-hist" aria-label="Gráfico do histórico de preço."></canvas></div>
+    ${S.ferr==='fibo'?`<div class="fibopts"><label><input type="checkbox" id="fib-ext" ${S.fibExt?'checked':''}> Extensões acima de 100%</label><label><input type="checkbox" id="fib-fit" ${S.fibFit?'checked':''}> Ajustar escala aos níveis</label><span id="fib-msg" style="color:var(--fib-chave)"></span></div>
+    <div class="fibwrap"><p class="note" style="margin:0">${FIB_DICA}</p><table class="fibtbl" id="fib-tbl"></table></div>`
+    :`<div class="selbox" id="sel-info"><span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span></div>`}<p class="note" id="hist-note" style="margin:10px 0 0"></p></div></section>
    <section class="card"><div class="card-h"><h2>Proventos por ano</h2></div><div class="card-b" id="divs"><span class="muted">Carregando…</span></div></section>
   </div>
   <section class="card"><div class="card-h"><h2>Indicadores</h2><span class="note">Balanço de ${esc((r.data_balanco||'').split('-').reverse().join('/'))} · passe o mouse no nome para ver a conta</span></div>
    <div class="card-b groups">${IND.map(([g,l])=>{ const its=l.filter(([k])=>!(r.banco&&['psr','m_bruta','m_ebit','m_liq','div_liq','div_liq_ebitda','div_liq_pl','liq_corrente','ev_ebitda','ev_ebit'].includes(k))); if(!its.length) return '';
-     return `<div class="grp"><h3>${g}</h3>${its.map(([k,n,tt,t])=>{ const v=k==='dy'?dy:r[k]; return `<div class="ind"><span ${tt?`title="${esc(tt)}"`:''}>${n}</span><span class="v ${['roe','m_liq','m_ebit'].includes(k)?cls(v):''}">${fmt(v,t,curRow(r))}</span></div>`; }).join('')}</div>`; }).join('')}</div>${r.banco?'<p class="note" style="margin:0;padding:0 16px 14px">Em bancos, margens e dívida não se aplicam: o dinheiro emprestado é a matéria-prima do negócio.</p>':''}</section>
+     return `<div class="grp"><h3>${g}</h3>${its.map(([k,n,tt,t])=>{ const v=k==='dy'?dy:r[k]; return `<div class="ind"><span ${tt?`title="${esc(tt)}"`:''}>${n}</span><span class="v ${['roe','m_liq','m_ebit'].includes(k)?cls(v):''}">${fmt(v,t,curRow(r))}${refSetor(r,k,v,t)}</span></div>`; }).join('')}</div>`; }).join('')}</div>
+   <p class="note" style="margin:0;padding:0 16px 14px">Embaixo de cada indicador: a mediana das empresas do mesmo setor (ou do mercado, quando o setor tem menos de 4 empresas). Verde quando a ação está do lado bom da mediana, vermelho quando está do lado ruim. É uma comparação com os pares, não uma recomendação.</p>${r.banco?'<p class="note" style="margin:0;padding:0 16px 14px">Em bancos, margens e dívida não se aplicam: o dinheiro emprestado é a matéria-prima do negócio.</p>':''}</section>
   <div style="display:flex;gap:8px"><button class="btn pri" data-simular="${esc(r.ticker)}">Simular investimento em ${esc(r.ticker)}</button></div>`;
 }
 async function drawAcao(){
@@ -448,11 +509,52 @@ async function drawAcao(){
   note.innerHTML=`${S.modo==='total'?'Retorno com dividendos reinvestidos':'Variação do preço'} no período: <b class="mono ${cls(ret)}">${fP(ret,1,true)}</b>${ok(cagr)&&anos>=1?` · <span class="mono">${fP(cagr,1)} ao ano</span>`:''} · ${lab[0].split('-').reverse().join('/')} a ${lab.at(-1).split('-').reverse().join('/')}${h.src?` · fonte: ${esc(h.src)}`:''}`;
   const ctx=$('#ch-hist'); if(!ctx||!window.Chart) return;
   const sel={a:null,b:null,drag:false};
+  // ---- Fibonacci (motor do Painel Operacional WIN: 0% e 100% são valores; níveis = a + (b − a) × p)
+  const fkey=r.ticker+'|'+S.modo, fib=S.fib[fkey]||(S.fib[fkey]={a:null,b:null});
+  let pick=0;
+  const fibAtivo=()=>S.ferr==='fibo'&&fib.a!=null&&fib.b!=null&&fib.a!==fib.b;
+  const niveis=()=>FIB_NIVEIS.filter(p=>S.fibExt||p<FIB_EXT);
+  const valorNivel=p=>fib.a+(fib.b-fib.a)*p/100;
+  const fibPlugin={id:'fib',afterDatasetsDraw(ch){ if(!fibAtivo()) return; const y=ch.scales.y, a=ch.chartArea, c=ch.ctx;
+    c.save(); c.font='11px '+css('--f-mono'); c.textBaseline='middle'; c.textAlign='left';
+    for(const p of niveis()){ const v=valorNivel(p), py=y.getPixelForValue(v); if(py<a.top-2||py>a.bottom+2) continue;
+      const chave=p===0||p===100, cor=chave?css('--fib-chave'):p>100?css('--fib-ext'):css('--fib-nivel');
+      c.strokeStyle=cor; c.lineWidth=chave?1.4:1; c.setLineDash(chave?[]:[3,3]);
+      c.beginPath(); c.moveTo(a.left,py+.5); c.lineTo(a.right,py+.5); c.stroke(); c.setLineDash([]);
+      c.fillStyle=cor; c.fillText(fN(v)+'  ('+fN(p,1)+'%)',a.right+8,py); }
+    c.fillStyle=css('--fib-chave'); for(const v of [fib.a,fib.b]){ const py=y.getPixelForValue(v); if(py>=a.top&&py<=a.bottom){ c.beginPath(); c.arc(a.left+6,py,3.5,0,6.284); c.fill(); } }
+    c.restore(); }};
   const selPlugin={id:'sel',beforeDatasetsDraw(ch){ if(sel.a==null||sel.b==null||sel.a===sel.b) return; const x=ch.scales.x, a=ch.chartArea, c=ch.ctx;
     const x0=x.getPixelForValue(Math.min(sel.a,sel.b)), x1=x.getPixelForValue(Math.max(sel.a,sel.b));
     c.save(); c.fillStyle=css('--accent-soft'); c.fillRect(x0,a.top,x1-x0,a.bottom-a.top); c.strokeStyle=css('--accent'); c.setLineDash([4,3]); c.beginPath(); c.moveTo(x0,a.top); c.lineTo(x0,a.bottom); c.moveTo(x1,a.top); c.lineTo(x1,a.bottom); c.stroke(); c.restore(); }};
   const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:[{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,fill:false,tension:.15}]},
-    options:chartOpts(v=>money(v,curRow(r))),plugins:[selPlugin]});
+    options:chartOpts(v=>money(v,curRow(r))),plugins:[selPlugin,fibPlugin]});
+  if(S.ferr==='fibo') ch.options.layout={padding:{right:128}};
+  const ajustaEscala=()=>{ const ys=ch.options.scales.y; delete ys.min; delete ys.max;
+    if(!(S.fibFit&&fibAtivo())) return;
+    const vals=serie.filter(ok).concat(niveis().map(valorNivel)); let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.08||1;
+    ys.min=lo-pad; ys.max=hi+pad; };
+  const fibTabela=()=>{ const t=$('#fib-tbl'); if(!t) return;
+    if(fib.a==null||fib.b==null){ t.innerHTML='<thead><tr><th class="l">Nível</th><th>Valor</th></tr></thead><tbody><tr style="cursor:default"><td colspan="2" class="l muted">Defina 0% e 100%.</td></tr></tbody>'; return; }
+    const atual=serie[serie.length-1], ns=niveis(); let perto=ns[0]; for(const p of ns) if(Math.abs(valorNivel(p)-atual)<Math.abs(valorNivel(perto)-atual)) perto=p;
+    t.innerHTML='<thead><tr><th class="l">Nível</th><th>Valor</th></tr></thead><tbody>'+ns.map(p=>`<tr style="cursor:default" class="${p===0?'lv0':p===100?'lv100':p>100?'lvx':''} ${p===perto?'perto':''}"><td class="l">${fN(p,1)}%</td><td>${money(valorNivel(p),curRow(r))}</td></tr>`).join('')+
+      `<tr style="cursor:default"><td class="l muted">Último</td><td class="muted">${money(atual,curRow(r))}</td></tr></tbody>`; };
+  const sincInputs=()=>{ const i0=$('#fib-p0'), i1=$('#fib-p1'); if(i0) i0.value=fib.a==null?'':fib.a.toFixed(2); if(i1) i1.value=fib.b==null?'':fib.b.toFixed(2); fibTabela(); };
+  const redesenha=()=>{ ajustaEscala(); ch.update('none'); fibTabela(); };
+  const setPick=m=>{ pick=m; $('#fib-pick0')?.classList.toggle('armed',m===1); $('#fib-pick1')?.classList.toggle('armed',m===2);
+    const msg=$('#fib-msg'); if(msg) msg.textContent=m?'Clique no gráfico para fixar o ponto de '+(m===1?'0%':'100%'):''; };
+  if(S.ferr==='fibo'){
+    sincInputs(); redesenha();
+    $('#fib-p0').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.a=isFinite(v)?v:null; redesenha(); });
+    $('#fib-p1').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.b=isFinite(v)?v:null; redesenha(); });
+    $('#fib-pick0').addEventListener('click',()=>setPick(pick===1?0:1));
+    $('#fib-pick1').addEventListener('click',()=>setPick(pick===2?0:2));
+    $('#fib-auto').addEventListener('click',()=>{ const v=serie.filter(ok); fib.a=Math.min(...v); fib.b=Math.max(...v); sincInputs(); redesenha(); });
+    $('#fib-clear').addEventListener('click',()=>{ fib.a=fib.b=null; setPick(0); sincInputs(); redesenha(); });
+    $('#fib-png').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=r.ticker+'_fibonacci.png'; a.href=ctx.toDataURL('image/png'); a.click(); });
+    $('#fib-ext').addEventListener('change',e=>{ S.fibExt=e.target.checked; redesenha(); });
+    $('#fib-fit').addEventListener('change',e=>{ S.fibFit=e.target.checked; redesenha(); });
+  }
   const idx=e=>{ const r=ctx.getBoundingClientRect(); const v=Math.round(ch.scales.x.getValueForPixel(e.clientX-r.left)); return Math.max(0,Math.min(lab.length-1,v)); };
   const info=()=>{ const box=$('#sel-info'); if(!box) return;
     if(sel.a==null||sel.b==null||sel.a===sel.b){ box.innerHTML='<span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span>'; return; }
@@ -464,11 +566,16 @@ async function drawAcao(){
       <div class="it"><small>Com dividendos</small><b class="${cls(tv)}">${fP(tv,1,true)}${ok(aa)?` <span class="muted">(${fP(aa,1)} a.a.)</span>`:''}</b></div>
       <div class="it"><small>Proventos pagos</small><b>${money(dv,curRow(r))} por ação <span class="muted">(${fP(dv/h.c[i],1)} do preço inicial)</span></b></div>
       <button class="btn x" id="sel-clear">Limpar</button>`; };
-  ctx.addEventListener('pointerdown',e=>{ sel.drag=true; sel.a=sel.b=idx(e); try{ ctx.setPointerCapture(e.pointerId); }catch{} ch.draw(); info(); });
-  ctx.addEventListener('pointermove',e=>{ if(!sel.drag) return; sel.b=idx(e); ch.draw(); info(); });
-  const end=()=>{ sel.drag=false; };
-  ctx.addEventListener('pointerup',end); ctx.addEventListener('pointercancel',end);
-  $('#sel-info').addEventListener('click',e=>{ if(e.target.id==='sel-clear'){ sel.a=sel.b=null; ch.draw(); info(); } });
+  if(S.ferr==='fibo'){
+    ctx.addEventListener('click',e=>{ if(!pick) return; const v=serie[idx(e)]; if(!ok(v)) return;
+      if(pick===1) fib.a=v; else fib.b=v; setPick(0); sincInputs(); redesenha(); });
+  } else {
+    ctx.addEventListener('pointerdown',e=>{ sel.drag=true; sel.a=sel.b=idx(e); try{ ctx.setPointerCapture(e.pointerId); }catch{} ch.draw(); info(); });
+    ctx.addEventListener('pointermove',e=>{ if(!sel.drag) return; sel.b=idx(e); ch.draw(); info(); });
+    const end=()=>{ sel.drag=false; };
+    ctx.addEventListener('pointerup',end); ctx.addEventListener('pointercancel',end);
+    $('#sel-info').addEventListener('click',e=>{ if(e.target.id==='sel-clear'){ sel.a=sel.b=null; ch.draw(); info(); } });
+  }
   // proventos por ano
   const byY={}; h.d.forEach((d,i)=>{ const y=d.slice(0,4); byY[y]=(byY[y]||0)+(h.v[i]||0); });
   const lastC={}; h.d.forEach((d,i)=>{ lastC[d.slice(0,4)]=h.c[i]; });
@@ -684,6 +791,7 @@ function openTk(t){ S.tk=t; $('#q').value=''; $('#sugs').hidden=true; try{ histo
 // ===================== eventos =====================
 document.addEventListener('click',e=>{
   const rb=e.target.closest('[data-rkn]'); if(rb){ S.rk.n=rb.dataset.rkn; render(); return; }
+  const fb=e.target.closest('[data-ferr]'); if(fb){ S.ferr=fb.dataset.ferr; render(); return; }
   const b=e.target.closest('[data-smodo],[data-add],[data-rm],[data-iguais],[data-ha],[data-todas],[data-tab],[data-open],[data-sort],[data-preset],[data-range],[data-modo],[data-simular],[data-act]');
   if(!b){ if(!e.target.closest('.search')) $('#sugs').hidden=true; return; }
   const d=b.dataset;
