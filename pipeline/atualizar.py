@@ -246,6 +246,54 @@ def etfs_e_indices() -> tuple[list[dict], dict]:
     return linhas, hist
 
 
+
+# ------------------------------------------------------------------ fatos relevantes e comunicados (CVM, IPE)
+CATEGORIAS_IPE = ("Fato Relevante", "Comunicado ao Mercado", "Aviso aos Acionistas")
+
+
+def eventos_cvm(ano: int, local: Path | None, tickers_por_cnpj: dict, dias: int = 120, por_empresa: int = 12) -> dict:
+    """Últimos fatos relevantes, comunicados e avisos de cada empresa, com o link do documento na CVM."""
+    import io
+    import zipfile
+    out = {}
+    zps = [z for z in (zip_cvm("IPE", a, local) for a in (ano, ano - 1)) if z]
+    if not zps:
+        log("IPE não encontrado")
+        return out
+    frames = []
+    for zp in zps:
+        with zipfile.ZipFile(zp) as z:
+            nome = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+            with z.open(nome) as f:
+                frames.append(pd.read_csv(io.TextIOWrapper(f, encoding="latin1"), sep=";", dtype=str))
+    df = pd.concat(frames, ignore_index=True)
+    col = lambda *ns: next((c for c in df.columns if c.lower() in [n.lower() for n in ns]), None)
+    c_cnpj, c_cat, c_ass, c_data = col("CNPJ_Companhia"), col("Categoria"), col("Assunto"), col("Data_Entrega")
+    c_link, c_tipo, c_prot, c_ver = col("Link_Download"), col("Tipo"), col("Protocolo_Entrega"), col("Versao")
+    if not all([c_cnpj, c_cat, c_data, c_link]):
+        log("IPE com colunas inesperadas:", list(df.columns))
+        return out
+    df = df[df[c_cat].isin(CATEGORIAS_IPE)].copy()
+    df["_d"] = pd.to_datetime(df[c_data], errors="coerce")
+    df = df[df["_d"] >= pd.Timestamp(HOJE) - pd.Timedelta(days=dias)]
+    if c_prot:
+        if c_ver:
+            df["_v"] = pd.to_numeric(df[c_ver], errors="coerce").fillna(0)
+            df = df.sort_values("_v")
+        df = df.drop_duplicates(c_prot, keep="last")
+    df = df.sort_values("_d", ascending=False)
+    for cnpj, g in df.groupby(c_cnpj, sort=False):
+        tks = tickers_por_cnpj.get(cnpj)
+        if not tks:
+            continue
+        itens = []
+        for _, r in g.head(por_empresa).iterrows():
+            assunto = (r.get(c_ass) if c_ass else None) or (r.get(c_tipo) if c_tipo else None) or ""
+            itens.append([r["_d"].strftime("%Y-%m-%d"), r[c_cat], str(assunto).strip()[:240], r[c_link]])
+        for t in tks:
+            out[t] = itens
+    return out
+
 # ------------------------------------------------------------------ saída
 def limpo(v):
     if v is None:
@@ -345,6 +393,17 @@ def main():
         macro = {"cdi": serie_bcb(4391), "ipca": serie_bcb(433), "ibov": serie_yahoo("^BVSP"),
                  "usdbrl": serie_yahoo("BRL=X"), "sp500": serie_yahoo("^GSPC")}
         (SAIDA / "macro.json").write_text(json.dumps(macro, separators=(",", ":")))
+
+    # --- fatos relevantes e comunicados (não derruba o resto se falhar)
+    try:
+        por_cnpj = {}
+        for t, c in zip(b["ticker"], b["cnpj"]):
+            por_cnpj.setdefault(c, []).append(t)
+        ev = eventos_cvm(y, a.local, por_cnpj)
+        (SAIDA / "eventos.json").write_text(json.dumps({"atualizado": HOJE.isoformat(), "acoes": ev}, ensure_ascii=False, separators=(",", ":")))
+        log("eventos CVM:", len(ev), "ações com documentos recentes")
+    except Exception as e:  # noqa: BLE001
+        log("eventos CVM falharam, seguindo sem eles:", e)
 
     # --- histórico anual e ranking por período (não derruba o resto se falhar)
     try:
