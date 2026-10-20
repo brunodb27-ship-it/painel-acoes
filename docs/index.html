@@ -494,10 +494,24 @@ function vAcao(){
    <div class="card-b groups">${IND.map(([g,l])=>{ const its=l.filter(([k])=>!(r.banco&&['psr','m_bruta','m_ebit','m_liq','div_liq','div_liq_ebitda','div_liq_pl','liq_corrente','ev_ebitda','ev_ebit'].includes(k))); if(!its.length) return '';
      return `<div class="grp"><h3>${g}</h3>${its.map(([k,n,tt,t])=>{ const v=k==='dy'?dy:r[k]; return `<div class="ind"><span ${tt?`title="${esc(tt)}"`:''}>${n}</span><span class="v ${['roe','m_liq','m_ebit'].includes(k)?cls(v):''}">${fmt(v,t,curRow(r))}${refSetor(r,k,v,t)}</span></div>`; }).join('')}</div>`; }).join('')}</div>
    <p class="note" style="margin:0;padding:0 16px 14px">Embaixo de cada indicador: a mediana das empresas do mesmo setor (ou do mercado, quando o setor tem menos de 4 empresas). Verde quando a ação está do lado bom da mediana, vermelho quando está do lado ruim. É uma comparação com os pares, não uma recomendação.</p>${r.banco?'<p class="note" style="margin:0;padding:0 16px 14px">Em bancos, margens e dívida não se aplicam: o dinheiro emprestado é a matéria-prima do negócio.</p>':''}</section>
+  <section class="card"><div class="card-h"><h2>Fatos relevantes e comunicados</h2><span class="note">documentos entregues à CVM nos últimos 120 dias</span></div><div class="card-b" id="eventos"><span class="muted">Carregando…</span></div></section>
   <div style="display:flex;gap:8px"><button class="btn pri" data-simular="${esc(r.ticker)}">Simular investimento em ${esc(r.ticker)}</button></div>`;
+}
+async function drawEventos(r){
+  const box=$('#eventos'); if(!box) return;
+  if(r.mercado==='EUA'||/^(ETF|Índice)$/.test(r.setor||'')){ box.innerHTML='<span class="muted">Só para empresas da B3.</span>'; return; }
+  if(S.eventos===undefined){ try{ S.eventos=await getJSON('data/eventos.json'); }catch{ S.eventos=null; } }
+  const b=$('#eventos'); if(!b||S.tk!==r.ticker) return;
+  if(!S.eventos){ b.innerHTML='<span class="muted">Os documentos da CVM aparecem depois da próxima atualização automática.</span>'; return; }
+  const it=(S.eventos.acoes||{})[r.ticker]||[];
+  if(!it.length){ b.innerHTML='<span class="muted">Nenhum fato relevante, comunicado ou aviso aos acionistas nos últimos 120 dias.</span>'; return; }
+  const seguro=u=>{ try{ const x=new URL(u); return /^https?:$/.test(x.protocol)?x.href:null; }catch{ return null; } };
+  b.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th class="l">Data</th><th class="l">Tipo</th><th class="l">Assunto</th><th class="l"></th></tr></thead><tbody>${it.map(([d,c,a,l])=>{ const u=seguro(l);
+    return `<tr style="cursor:default"><td class="l">${esc(d.split('-').reverse().join('/'))}</td><td class="l"><span class="chip"${c==='Fato Relevante'?' style="border-color:var(--accent);color:var(--accent)"':''}>${esc(c)}</span></td><td class="l" style="white-space:normal;font-family:var(--f-body)">${esc(a||'—')}</td><td class="l">${u?`<a href="${esc(u)}" target="_blank" rel="noopener" style="color:var(--accent)">abrir ↗</a>`:''}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 async function drawAcao(){
   const r=byTk(S.tk); if(!r) return;
+  drawEventos(r);
   const h=await loadHist(r.ticker); if(S.tab!=='acao'||S.tk!==r.ticker) return;
   const note=$('#hist-note'), dv=$('#divs');
   if(!h){ note.textContent='Histórico ainda não disponível para esta ação.'; dv.innerHTML='<span class="muted">Sem dados.</span>'; return; }
