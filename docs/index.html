@@ -8,28 +8,35 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout: barra fixa com marca, busca e abas; abaixo, uma "mesa" por aba (buscador, ficha, simulador). Números em mono tabular. */
+/* Paleta: base grafite quase preta (estilo TradeMap), laranja como cor de ação e um degradê laranja→roxo→azul (estilo Gemini) só na marca, na aba ativa e no fio do topo.
+   Layout: barra fixa com marca, busca e abas; abaixo, uma "mesa" por aba (buscador, ficha, simulador). Números em mono tabular. */
 :root{
-  --bg:#0d131b; --panel:#141c27; --panel2:#1a2431; --line:#253244; --fg:#e6ecf3; --muted:#8798ad; --faint:#5d6d82;
-  --accent:#e8ae45; --accent-ink:#1b1305; --fib-chave:#F0B429;--fib-ext:#39C2D7;--fib-nivel:#AAB6B0;--accent-soft:rgba(232,174,69,.14);
-  --up:#3ec28f; --down:#ee6672; --up-soft:rgba(62,194,143,.13); --down-soft:rgba(238,102,114,.13);
-  --s1:#e8ae45; --s2:#5aa9e6; --s3:#b48ae0; --s4:#8798ad;
-  --c1:#e8ae45; --c2:#5aa9e6; --c3:#b48ae0; --c4:#3ec28f; --c5:#f08a5d; --c6:#45c4c4; --c7:#e07bb5; --c8:#a9c95b; --c9:#c9a27a; --c10:#8f9bff;
+  --bg:#0a0c11; --panel:#11141b; --panel2:#181c25; --line:#232937; --fg:#eceef4; --muted:#8b93a7; --faint:#5c6478;
+  --accent:#ff7a1f; --accent2:#9b7bff; --accent3:#4f8dff; --accent-ink:#1a0c02; --accent-soft:rgba(255,122,31,.13); --accent2-soft:rgba(155,123,255,.14);
+  --grad:linear-gradient(90deg,#ff7a1f 0%,#e2557a 45%,#9b7bff 75%,#4f8dff 100%);
+  --fib-chave:#F0B429;--fib-ext:#39C2D7;--fib-nivel:#AAB6B0;
+  --up:#2fd08a; --down:#ff5d6c; --up-soft:rgba(47,208,138,.13); --down-soft:rgba(255,93,108,.13);
+  --s1:#ff7a1f; --s2:#9b7bff; --s3:#4f8dff; --s4:#8b93a7;
+  --c1:#ff7a1f; --c2:#9b7bff; --c3:#4f8dff; --c4:#2fd08a; --c5:#ffb347; --c6:#3fd0d4; --c7:#ff6fb1; --c8:#b5d65a; --c9:#d2a679; --c10:#c7b8ff;
   --f-display:"Archivo","Arial Narrow",system-ui,sans-serif; --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   color-scheme:dark;
 }
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
-  --bg:#f2f4f7; --panel:#fff; --panel2:#eef1f5; --line:#d8dfe8; --fg:#111923; --muted:#5a687a; --faint:#8a97a8;
-  --accent:#a86d06; --accent-ink:#fff; --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;--accent-soft:rgba(168,109,6,.10);
-  --up:#0d8457; --down:#c4323f; --up-soft:rgba(13,132,87,.09); --down-soft:rgba(196,50,63,.09);
-  --s1:#a86d06; --s2:#2f6fb0; --s3:#7a4fb3; --s4:#6b7a8c;
-  --c1:#b07a12; --c2:#2f6fb0; --c3:#7a4fb3; --c4:#12855a; --c5:#c4562a; --c6:#16858a; --c7:#b0407e; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}}
+  --bg:#f5f5f8; --panel:#ffffff; --panel2:#f0f0f5; --line:#dfe0ea; --fg:#13151c; --muted:#5b6072; --faint:#8b90a2;
+  --accent:#d9530a; --accent2:#6a4fd6; --accent3:#2f6fe0; --accent-ink:#fff; --accent-soft:rgba(217,83,10,.09); --accent2-soft:rgba(106,79,214,.09);
+  --grad:linear-gradient(90deg,#e8650f 0%,#cc3f6a 45%,#6a4fd6 75%,#2f6fe0 100%);
+  --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;
+  --up:#0b8a55; --down:#d0303f; --up-soft:rgba(11,138,85,.09); --down-soft:rgba(208,48,63,.09);
+  --s1:#d9530a; --s2:#6a4fd6; --s3:#2f6fe0; --s4:#6b7184;
+  --c1:#d9530a; --c2:#6a4fd6; --c3:#2f6fe0; --c4:#0b8a55; --c5:#c98a12; --c6:#11878c; --c7:#c23a84; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}}
 :root[data-theme="light"]{
-  --bg:#f2f4f7; --panel:#fff; --panel2:#eef1f5; --line:#d8dfe8; --fg:#111923; --muted:#5a687a; --faint:#8a97a8;
-  --accent:#a86d06; --accent-ink:#fff; --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;--accent-soft:rgba(168,109,6,.10);
-  --up:#0d8457; --down:#c4323f; --up-soft:rgba(13,132,87,.09); --down-soft:rgba(196,50,63,.09);
-  --s1:#a86d06; --s2:#2f6fb0; --s3:#7a4fb3; --s4:#6b7a8c;
-  --c1:#b07a12; --c2:#2f6fb0; --c3:#7a4fb3; --c4:#12855a; --c5:#c4562a; --c6:#16858a; --c7:#b0407e; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}
+  --bg:#f5f5f8; --panel:#ffffff; --panel2:#f0f0f5; --line:#dfe0ea; --fg:#13151c; --muted:#5b6072; --faint:#8b90a2;
+  --accent:#d9530a; --accent2:#6a4fd6; --accent3:#2f6fe0; --accent-ink:#fff; --accent-soft:rgba(217,83,10,.09); --accent2-soft:rgba(106,79,214,.09);
+  --grad:linear-gradient(90deg,#e8650f 0%,#cc3f6a 45%,#6a4fd6 75%,#2f6fe0 100%);
+  --fib-chave:#c28a00;--fib-ext:#1a8fa3;--fib-nivel:#8a949c;
+  --up:#0b8a55; --down:#d0303f; --up-soft:rgba(11,138,85,.09); --down-soft:rgba(208,48,63,.09);
+  --s1:#d9530a; --s2:#6a4fd6; --s3:#2f6fe0; --s4:#6b7184;
+  --c1:#d9530a; --c2:#6a4fd6; --c3:#2f6fe0; --c4:#0b8a55; --c5:#c98a12; --c6:#11878c; --c7:#c23a84; --c8:#6b8a1e; --c9:#8f6a3f; --c10:#4b55c9; color-scheme:light}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
@@ -38,11 +45,13 @@ button,input,select{font:inherit;color:inherit}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)} .faint{color:var(--faint)}
 
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--grad);opacity:.85}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .top-in{max-width:1480px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
 .brand{display:flex;align-items:baseline;gap:10px;cursor:pointer}
-.brand h1{font-family:var(--f-display);font-weight:800;font-size:19px;margin:0;letter-spacing:.01em}
-.brand span{font-family:var(--f-mono);font-size:11px;color:var(--accent);letter-spacing:.08em}
+.brand h1{font-family:var(--f-display);font-weight:800;font-size:19px;margin:0;letter-spacing:.01em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand span{font-family:var(--f-mono);font-size:10.5px;color:var(--accent2);letter-spacing:.08em;border:1px solid var(--accent2-soft);background:var(--accent2-soft);padding:1px 6px;border-radius:4px}
 .search{position:relative;flex:1 1 220px;max-width:380px}
 .search input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 .search input:focus{border-color:var(--accent);outline:none}
@@ -52,7 +61,8 @@ button,input,select{font:inherit;color:inherit}
 .sugs b{font-family:var(--f-display);min-width:64px}
 nav.tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px}
 nav.tabs button{background:none;border:0;padding:6px 12px;border-radius:6px;color:var(--muted);cursor:pointer;font-weight:500;white-space:nowrap}
-nav.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--fg);box-shadow:inset 0 -2px 0 var(--accent)}
+nav.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--fg);position:relative}
+nav.tabs button[aria-selected="true"]::after{content:"";position:absolute;left:8px;right:8px;bottom:2px;height:2px;border-radius:2px;background:var(--grad)}
 .stamp{margin-left:auto;font-size:12px;color:var(--muted)}
 
 main{max-width:1480px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:18px}
@@ -66,6 +76,7 @@ main{max-width:1480px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:18px
 .btn:hover{border-color:var(--muted)}
 .btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.pri:hover{filter:brightness(1.08)}
 .inp{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:6px 9px;min-width:0}
 .inp:focus{border-color:var(--accent);outline:none}
 
@@ -129,7 +140,7 @@ th.hl{color:var(--accent)}
 .selbox .x{margin-left:auto}
 .seg{display:flex;gap:2px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px;flex-wrap:wrap}
 .seg button{border:0;background:none;padding:4px 10px;border-radius:5px;color:var(--muted);cursor:pointer;font-size:12px}
-.seg button[aria-pressed="true"]{background:var(--panel);color:var(--fg);box-shadow:inset 0 -2px 0 var(--accent)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
 .two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:18px}
 @media (max-width:900px){.two{grid-template-columns:minmax(0,1fr)}}
 
@@ -216,8 +227,8 @@ const fU=v=>ok(v)?v.toLocaleString('pt-BR',{style:'currency',currency:'USD'}):'�
 const money=(v,cur)=>cur==='USD'?fU(v):fR(v);
 const fBc=(v,cur)=>{ if(cur!=='USD') return fB(v); if(!ok(v)) return '—'; const a=Math.abs(v); if(a>=1e12) return 'US$ '+fN(v/1e12,2)+' tri'; if(a>=1e9) return 'US$ '+fN(v/1e9,2)+' bi'; if(a>=1e6) return 'US$ '+fN(v/1e6,1)+' mi'; if(a>=1e3) return 'US$ '+fN(v/1e3,0)+' mil'; return fU(v); };
 const curRow=r=>(r&&r.moeda)||'BRL';
-// DY: o dos dividendos pagos (Yahoo); se vier zerado ou faltando numa ação da B3, usa o declarado à CVM
-const dyDe=r=>(ok(r.dy)&&r.dy>0)?r.dy:(ok(r.dy_cvm)?r.dy_cvm:r.dy);
+// DY: o dos dividendos pagos (Yahoo); se faltar ou vier muito abaixo do declarado à CVM (buraco no histórico do Yahoo), usa o da CVM
+const dyDe=r=>{ const y=ok(r.dy)?r.dy:null, c=ok(r.dy_cvm)?r.dy_cvm:null; if(c!=null&&(r.mercado||'Brasil')==='Brasil'&&(y==null||y<c*0.3)) return c; return y??c; };
 
 // ===================== dados =====================
 async function getJSON(p){ const r=await fetch(p,{cache:'no-cache'}); if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }
@@ -541,7 +552,7 @@ async function drawAcao(){
   const selPlugin={id:'sel',beforeDatasetsDraw(ch){ if(sel.a==null||sel.b==null||sel.a===sel.b) return; const x=ch.scales.x, a=ch.chartArea, c=ch.ctx;
     const x0=x.getPixelForValue(Math.min(sel.a,sel.b)), x1=x.getPixelForValue(Math.max(sel.a,sel.b));
     c.save(); c.fillStyle=css('--accent-soft'); c.fillRect(x0,a.top,x1-x0,a.bottom-a.top); c.strokeStyle=css('--accent'); c.setLineDash([4,3]); c.beginPath(); c.moveTo(x0,a.top); c.lineTo(x0,a.bottom); c.moveTo(x1,a.top); c.lineTo(x1,a.bottom); c.stroke(); c.restore(); }};
-  const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:[{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,fill:false,tension:.15}]},
+  const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:[{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,tension:.15,fill:'start',backgroundColor:c=>{ const a=c.chart.chartArea; if(!a) return 'transparent'; const g=c.chart.ctx.createLinearGradient(0,a.top,0,a.bottom); g.addColorStop(0,css('--accent-soft')); g.addColorStop(1,'rgba(0,0,0,0)'); return g; }}]},
     options:chartOpts(v=>money(v,curRow(r))),plugins:[selPlugin,fibPlugin]});
   if(S.ferr==='fibo') ch.options.layout={padding:{right:128}};
   const ajustaEscala=()=>{ const ys=ch.options.scales.y; delete ys.min; delete ys.max;
