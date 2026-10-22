@@ -149,18 +149,31 @@ def cotacoes(tickers: list[str], sufixo: str = ".SA") -> tuple[dict, dict]:
 
 
 def serie_bcb(codigo: int, desde: int = 2000) -> dict:
+    """Série mensal do Banco Central em janelas de 5 anos, com até 3 tentativas por janela."""
     out = {}
-    for ini in range(desde, HOJE.year + 1, 10):
-        fim = min(ini + 9, HOJE.year)
+    for ini in range(desde, HOJE.year + 1, 5):
+        fim = min(ini + 4, HOJE.year)
         url = (f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{codigo}/dados?formato=json"
                f"&dataInicial=01/01/{ini}&dataFinal=31/12/{fim}")
-        try:
-            for x in requests.get(url, timeout=60).json():
-                dd, mm, aa = x["data"].split("/")
-                out[f"{aa}-{mm}"] = float(x["valor"])
-        except Exception as e:  # noqa: BLE001
-            log("BCB", codigo, e)
+        for tentativa in range(3):
+            try:
+                r = requests.get(url, timeout=60, headers={"User-Agent": "painel-acoes/1.0", "Accept": "application/json"})
+                r.raise_for_status()
+                for x in r.json():
+                    dd, mm, aa = x["data"].split("/")
+                    out[f"{aa}-{mm}"] = float(x["valor"])
+                break
+            except Exception as e:  # noqa: BLE001
+                log("BCB", codigo, ini, "tentativa", tentativa + 1, e)
+                time.sleep(5 * (tentativa + 1))
     return out
+
+
+def junta_serie(nova: dict, antiga: dict | None) -> dict:
+    """Mantém os meses que já tínhamos quando a fonte falha numa janela."""
+    if not antiga:
+        return nova
+    return {**antiga, **nova}
 
 
 def serie_yahoo(sym: str) -> dict:
@@ -390,8 +403,14 @@ def main():
         (SAIDA / "hist" / f"{t}.json").write_text(json.dumps(h, separators=(",", ":")))
 
     if not a.sem_precos and not a.precos_json:
+        try:
+            antigo = json.loads((SAIDA / "macro.json").read_text())
+        except Exception:  # noqa: BLE001
+            antigo = {}
         macro = {"cdi": serie_bcb(4391), "ipca": serie_bcb(433), "ibov": serie_yahoo("^BVSP"),
                  "usdbrl": serie_yahoo("BRL=X"), "sp500": serie_yahoo("^GSPC")}
+        macro = {k: junta_serie(v, antigo.get(k)) for k, v in macro.items()}
+        log("macro:", {k: (min(v), max(v)) if v else None for k, v in macro.items()})
         (SAIDA / "macro.json").write_text(json.dumps(macro, separators=(",", ":")))
 
     # --- fatos relevantes e comunicados (não derruba o resto se falhar)
