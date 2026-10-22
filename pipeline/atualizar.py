@@ -141,6 +141,11 @@ def cotacoes(tickers: list[str], sufixo: str = ".SA") -> tuple[dict, dict]:
                 "a": [round(float(x), 4) for x in adj],
                 "v": [round(float(x), 6) for x in divs.reindex(mm.index).fillna(0)],
             }
+            # abertura, máxima e mínima do mês, para o gráfico de candles (mesma base do fechamento)
+            for col, k in (("Open", "o"), ("High", "h"), ("Low", "l")):
+                if col in mm:
+                    serie = mm[col].reindex(mm.index)
+                    hist[t][k] = [round(float(x), 4) if pd.notna(x) else None for x in serie]
             if "Stock Splits" in mm:
                 sp = mm["Stock Splits"].fillna(0)
                 hist[t]["sp"] = [[k.strftime("%Y-%m"), round(float(x), 4)] for k, x in sp.items() if x and float(x) != 1.0]
