@@ -214,7 +214,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 // ===================== estado =====================
 const S = { tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
-  range:'10', modo:'preco', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
+  range:'10', modo:'preco', graf:'linha', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
   rf:{produto:'cdb',valor:10000,aporte:500,prazo:5,unidade:'anos',tipo:'cdi',taxa:100,taxaUn:'aa',cdi:null,ipca:null},
   cart:{itens:['ITUB4','PETR4','WEGE3','BBAS3'].map(tk=>({tk,p:''}))}, charts:{} };
@@ -499,6 +499,7 @@ function vAcao(){
      <div style="display:flex;gap:8px;flex-wrap:wrap">
       <div class="seg">${[['1','1A'],['5','5A'],['10','10A'],['20','20A'],['max','Máx']].map(([k,l])=>`<button data-range="${k}" aria-pressed="${S.range===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['preco','Preço'],['total','Com dividendos']].map(([k,l])=>`<button data-modo="${k}" aria-pressed="${S.modo===k}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['linha','Linha'],['candle','Candles']].map(([k,l])=>`<button data-graf="${k}" aria-pressed="${S.graf===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['medir','Medir'],['fibo','Fibonacci']].map(([k,l])=>`<button data-ferr="${k}" aria-pressed="${S.ferr===k}">${l}</button>`).join('')}</div>
      </div></div>
     <div class="card-b">${S.ferr==='fibo'?`<div class="fibrow" style="margin:0 0 10px">
@@ -562,12 +563,38 @@ async function drawAcao(){
   const selPlugin={id:'sel',beforeDatasetsDraw(ch){ if(sel.a==null||sel.b==null||sel.a===sel.b) return; const x=ch.scales.x, a=ch.chartArea, c=ch.ctx;
     const x0=x.getPixelForValue(Math.min(sel.a,sel.b)), x1=x.getPixelForValue(Math.max(sel.a,sel.b));
     c.save(); c.fillStyle=css('--accent-soft'); c.fillRect(x0,a.top,x1-x0,a.bottom-a.top); c.strokeStyle=css('--accent'); c.setLineDash([4,3]); c.beginPath(); c.moveTo(x0,a.top); c.lineTo(x0,a.bottom); c.moveTo(x1,a.top); c.lineTo(x1,a.bottom); c.stroke(); c.restore(); }};
-  const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:[{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,tension:.15,fill:'start',backgroundColor:c=>{ const a=c.chart.chartArea; if(!a) return 'transparent'; const g=c.chart.ctx.createLinearGradient(0,a.top,0,a.bottom); g.addColorStop(0,css('--accent-soft')); g.addColorStop(1,'rgba(0,0,0,0)'); return g; }}]},
-    options:chartOpts(v=>money(v,curRow(r))),plugins:[selPlugin,fibPlugin]});
+  // ---- candles mensais: abertura, máxima e mínima vêm na mesma base do fechamento;
+  //      no modo "com dividendos" cada mês é ajustado pelo mesmo fator do fechamento (a ÷ c)
+  const temOHLC=Array.isArray(h.o)&&Array.isArray(h.h)&&Array.isArray(h.l);
+  const candle=S.graf==='candle'&&temOHLC;
+  const fator=i=>S.modo==='total'&&h.c[i]?h.a[i]/h.c[i]:1;
+  const O=candle?h.o.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
+  const H=candle?h.h.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
+  const L=candle?h.l.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
+  const candlePlugin={id:'candle',afterDatasetsDraw(ch){ if(!candle) return; const x=ch.scales.x, y=ch.scales.y, c=ch.ctx, n=lab.length;
+    const larg=Math.max(1,Math.min(14,(ch.chartArea.right-ch.chartArea.left)/n*0.62));
+    c.save();
+    for(let j=0;j<n;j++){ const o=O[j], hi=H[j], lo=L[j], cl=serie[j]; if(![o,hi,lo,cl].every(ok)) continue;
+      const px=x.getPixelForValue(j), sobe=cl>=o, cor=sobe?css('--up'):css('--down');
+      c.strokeStyle=cor; c.fillStyle=cor; c.lineWidth=1;
+      c.beginPath(); c.moveTo(px,y.getPixelForValue(hi)); c.lineTo(px,y.getPixelForValue(lo)); c.stroke();
+      const y1=y.getPixelForValue(Math.max(o,cl)), y2=y.getPixelForValue(Math.min(o,cl));
+      c.fillRect(px-larg/2,y1,larg,Math.max(1,y2-y1)); }
+    c.restore(); }};
+  const dsPreco=candle
+    ? [{data:serie,borderColor:'transparent',borderWidth:0,pointRadius:0,fill:false},
+       {data:H,borderColor:'transparent',pointRadius:0,fill:false},{data:L,borderColor:'transparent',pointRadius:0,fill:false}]
+    : [{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,tension:.15,fill:'start',backgroundColor:c=>{ const a=c.chart.chartArea; if(!a) return 'transparent'; const g=c.chart.ctx.createLinearGradient(0,a.top,0,a.bottom); g.addColorStop(0,css('--accent-soft')); g.addColorStop(1,'rgba(0,0,0,0)'); return g; }}];
+  const opts=chartOpts(v=>money(v,curRow(r)));
+  if(candle){ opts.plugins.tooltip.filter=it=>it.datasetIndex===0;
+    opts.plugins.tooltip.callbacks.label=c=>{ const j=c.dataIndex, m=v=>money(v,curRow(r)); return ['Abertura '+m(O[j]),'Máxima '+m(H[j]),'Mínima '+m(L[j]),'Fechamento '+m(serie[j])]; }; }
+  const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:dsPreco},
+    options:opts,plugins:[selPlugin,candlePlugin,fibPlugin]});
+  if(S.graf==='candle'&&!temOHLC) note.innerHTML+=' · <span class="muted">Os candles aparecem depois da próxima atualização automática; por enquanto, linha.</span>';
   if(S.ferr==='fibo') ch.options.layout={padding:{right:128}};
   const ajustaEscala=()=>{ const ys=ch.options.scales.y; delete ys.min; delete ys.max;
     if(!(S.fibFit&&fibAtivo())) return;
-    const vals=serie.filter(ok).concat(niveis().map(valorNivel)); let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.08||1;
+    const vals=serie.filter(ok).concat(niveis().map(valorNivel),candle?H.filter(ok):[],candle?L.filter(ok):[]); let lo=Math.min(...vals), hi=Math.max(...vals); const pad=(hi-lo)*.08||1;
     ys.min=lo-pad; ys.max=hi+pad; };
   const fibTabela=()=>{ const t=$('#fib-tbl'); if(!t) return;
     if(fib.a==null||fib.b==null){ t.innerHTML='<thead><tr><th class="l">Nível</th><th>Valor</th></tr></thead><tbody><tr style="cursor:default"><td colspan="2" class="l muted">Defina 0% e 100%.</td></tr></tbody>'; return; }
@@ -584,7 +611,7 @@ async function drawAcao(){
     $('#fib-p1').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.b=isFinite(v)?v:null; redesenha(); });
     $('#fib-pick0').addEventListener('click',()=>setPick(pick===1?0:1));
     $('#fib-pick1').addEventListener('click',()=>setPick(pick===2?0:2));
-    $('#fib-auto').addEventListener('click',()=>{ const v=serie.filter(ok); fib.a=Math.min(...v); fib.b=Math.max(...v); sincInputs(); redesenha(); });
+    $('#fib-auto').addEventListener('click',()=>{ const lo=(candle?L:serie).filter(ok), hi=(candle?H:serie).filter(ok); fib.a=Math.min(...lo); fib.b=Math.max(...hi); sincInputs(); redesenha(); });
     $('#fib-clear').addEventListener('click',()=>{ fib.a=fib.b=null; setPick(0); sincInputs(); redesenha(); });
     $('#fib-png').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=r.ticker+'_fibonacci.png'; a.href=ctx.toDataURL('image/png'); a.click(); });
     $('#fib-ext').addEventListener('change',e=>{ S.fibExt=e.target.checked; redesenha(); });
@@ -978,6 +1005,7 @@ function openTk(t){ S.tk=t; $('#q').value=''; $('#sugs').hidden=true; try{ histo
 document.addEventListener('click',e=>{
   const rb=e.target.closest('[data-rkn]'); if(rb){ S.rk.n=rb.dataset.rkn; render(); return; }
   const fb=e.target.closest('[data-ferr]'); if(fb){ S.ferr=fb.dataset.ferr; render(); return; }
+  const gb=e.target.closest('[data-graf]'); if(gb){ S.graf=gb.dataset.graf; try{ localStorage.setItem('painel-graf',S.graf); }catch{} render(); return; }
   const b=e.target.closest('[data-smodo],[data-add],[data-rm],[data-iguais],[data-ha],[data-todas],[data-tab],[data-open],[data-sort],[data-preset],[data-range],[data-modo],[data-simular],[data-act]');
   if(!b){ if(!e.target.closest('.search')) $('#sugs').hidden=true; return; }
   const d=b.dataset;
@@ -1032,6 +1060,7 @@ function aplicaTema(t,redesenha){
   try{ localStorage.setItem('painel-tema',t); }catch{}
   if(redesenha&&S.rows.length) render();   // gráficos pegam as cores do tema na hora de desenhar
 }
+try{ const g=localStorage.getItem('painel-graf'); if(g==='candle'||g==='linha') S.graf=g; }catch{}
 let temaAtual='sistema'; try{ temaAtual=localStorage.getItem('painel-tema')||'sistema'; }catch{}
 if(!TEMAS.includes(temaAtual)) temaAtual='sistema';
 aplicaTema(temaAtual,false);
