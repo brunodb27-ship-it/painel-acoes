@@ -64,6 +64,10 @@ nav.tabs button{background:none;border:0;padding:6px 12px;border-radius:6px;colo
 nav.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--fg);position:relative}
 nav.tabs button[aria-selected="true"]::after{content:"";position:absolute;left:8px;right:8px;bottom:2px;height:2px;border-radius:2px;background:var(--grad)}
 .stamp{margin-left:auto;font-size:12px;color:var(--muted)}
+.btn.tema{padding:6px 10px;font-size:12.5px;gap:6px}
+.rf-form{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important}
+.rf-form .pair select{flex:0 0 auto;width:auto;min-width:96px}
+.btn.tema svg{width:15px;height:15px}
 
 main{max-width:1480px;margin:0 auto;padding:18px 16px 48px;display:grid;gap:18px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:0}
@@ -197,6 +201,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   </nav>
   <button class="btn" data-todas="1">Todas as ações</button>
   <span class="stamp" id="stamp">carregando…</span>
+  <button class="btn tema" id="tema" type="button" aria-label="Trocar tema" title="Trocar entre claro, escuro e o tema do sistema"></button>
 </div></header>
 <main id="app"><div class="empty">Carregando dados…</div></main>
 
@@ -205,8 +210,9 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 // ===================== estado =====================
 const S = { tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
-  range:'10', modo:'preco', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true},
+  range:'10', modo:'preco', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
+  rf:{produto:'cdb',valor:10000,aporte:500,prazo:5,unidade:'anos',tipo:'cdi',taxa:100,taxaUn:'aa',cdi:null,ipca:null},
   cart:{itens:['ITUB4','PETR4','WEGE3','BBAS3'].map(tk=>({tk,p:''}))}, charts:{} };
 
 // ===================== util =====================
@@ -627,25 +633,40 @@ function fxFn(t){ if(moedaTk(t)!=='USD') return null; const u=fxMap(); if(!u) re
 
 // Mês a mês: a posição acompanha o preço (ajustado por desdobramentos); os proventos do mês caem em dinheiro
 // e, se marcado, compram mais ações no fechamento daquele mês. Valores em reais (ações dos EUA convertidas pelo dólar do mês).
-function simPath(h, labels, valor, aporte, reinv, semDiv, fx){
+// Impostos (pessoa física residente no Brasil, regras vigentes em 2026, simplificadas):
+//  B3: dividendos isentos; prêmio de opção 15% sobre o ganho, pago todo mês; venda de ações 15% sobre o ganho.
+//  EUA: dividendos com 30% retidos lá na fonte (o Brasil aceita como crédito e não cobra mais nada); opções e venda com 15% de IR no Brasil.
+function aliquotas(t){ const us=moedaTk(t)==='USD'; return {div:us?0.30:0, opc:0.15, venda:0.15}; }
+function simPath(h, labels, valor, aporte, reinv, semDiv, fx, opc, tax){
   if(!h._ix) h._ix=Object.fromEntries(h.d.map((d,i)=>[d,i]));
-  const out=[], inv=[]; let acoes=0, cash=0, divs=0, invested=0, prev=null;
+  const mOpc=opc?Math.pow(1+opc,1/12)-1:0;   // renda de opções: % ao ano sobre o valor da posição, recebida mês a mês
+  const out=[], inv=[]; let acoes=0, cash=0, divs=0, premios=0, invested=0, prev=null, base=0, irPago=0;
+  const tDiv=tax?tax.div:0, tOpc=tax?tax.opc:0;
   labels.forEach((lb,k)=>{
     let i=h._ix[lb]; if(i==null) i=prev;
     const f=fx?(fx(lb)||1):1;
-    if(k===0){ acoes=valor/f; invested=valor; }
+    if(k===0){ acoes=valor/f; invested=valor; base=valor; }
     else{
       if(i!==prev&&prev!=null){
         acoes*=h.c[i]/h.c[prev];
-        const d=semDiv?0:acoes*(h.v[i]||0)/h.c[i]; divs+=d*f;
-        if(reinv) acoes+=d; else cash+=d*f;
+        const bruto=semDiv?0:acoes*(h.v[i]||0)/h.c[i], d=bruto*(1-tDiv); divs+=d*f; irPago+=bruto*tDiv*f;
+        if(reinv){ acoes+=d; base+=d*f; } else cash+=d*f;
       }
-      if(aporte){ acoes+=aporte/f; invested+=aporte; }
+      if(mOpc&&!semDiv){ const bruto=acoes*mOpc, pr=bruto*(1-tOpc); premios+=pr*f; irPago+=bruto*tOpc*f; if(reinv){ acoes+=pr; base+=pr*f; } else cash+=pr*f; }
+      if(aporte){ acoes+=aporte/f; invested+=aporte; base+=aporte; }
     }
     prev=i; out.push(acoes*f+cash); inv.push(invested);
   });
-  return {out,inv,divs,invested};
+  const posicao=acoes*(fx?(fx(labels.at(-1))||1):1), irVenda=tax?Math.max(0,posicao-base)*tax.venda:0;
+  return {out,inv,divs,premios,invested,irPago,irVenda};
 }
+// câmbio congelado no primeiro mês: mostra só o resultado da empresa, sem a variação do dólar
+function fxSim(t,labels){ const fx=fxFn(t); if(!fx||!S.sim.semCambio) return fx; const f0=fx(labels[0]); return ()=>f0; }
+// índice de inflação acumulada (IPCA) para trazer cada mês a reais do último mês
+function fatorInflacao(labels){ const ip=S.macro&&S.macro.ipca; if(!ip) return null; let acc=1; const idx=labels.map((lb,i)=>{ if(i>0) acc*=1+((ip[lb]??0)/100); return acc; }); const fim=idx.at(-1); return idx.map(v=>fim/v); }
+// investido acumulado mês a mês, em reais de hoje (para o gráfico)
+function investidoAcumCorr(labels,valor,aporte){ const f=fatorInflacao(labels); let t=0; return labels.map((_,i)=>{ t+=(i===0?valor:aporte)*f[i]; return t; }); }
+function investidoCorrigido(labels,valor,aporte){ const f=fatorInflacao(labels); if(!f) return null; let tot=valor*f[0]; for(let i=1;i<labels.length;i++) tot+=aporte*f[i]; return tot; }
 function simBench(labels, valor, aporte, kind){
   const m=S.macro; if(!m) return null; const out=[]; let v=valor;
   if(kind==='cdi'||kind==='ipca'){ const s=m[kind]; if(!s) return null; for(let i=0;i<labels.length;i++){ if(i>0){ const r=s[labels[i]]; if(r==null) return null; v=v*(1+r/100)+aporte; } out.push(v);} return out; }
@@ -653,6 +674,7 @@ function simBench(labels, valor, aporte, kind){
 }
 
 function vSim(){
+  if(S.sim.modo==='rf') return vRF();
   const s=S.sim; if(S.tk&&S.tk!==s.vistoTk){ s.tk=S.tk; s.vistoTk=S.tk; } if(!s.tk) s.tk='ITUB4';
   const hasMacro=S.macro&&S.macro.cdi&&Object.keys(S.macro.cdi).length;
   const it=S.cart.itens;
@@ -670,7 +692,7 @@ function vSim(){
    </div>` : '';
   return `
   <section class="card"><div class="card-h"><h2>Simulador</h2>
-    <div class="seg">${[['uma','Uma ação'],['carteira','Carteira']].map(([k,l])=>`<button data-smodo="${k}" aria-pressed="${s.modo===k}">${l}</button>`).join('')}</div></div>
+    <div class="seg">${[['uma','Uma ação'],['carteira','Carteira'],['rf','Renda fixa']].map(([k,l])=>`<button data-smodo="${k}" aria-pressed="${s.modo===k}">${l}</button>`).join('')}</div></div>
    ${cartBox}
    <div class="card-b sim-form">
     ${tkField}
@@ -678,6 +700,8 @@ function vSim(){
     <div class="f"><label for="s-mes">A partir de</label><div class="pair"><select class="inp" id="s-mes" aria-label="Mês">${MESES.map((m,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${s.inicio.slice(5)===String(i+1).padStart(2,'0')?'selected':''}>${m}</option>`).join('')}</select><select class="inp" id="s-ano" aria-label="Ano">${anosSim().map(y=>`<option ${s.inicio.slice(0,4)==y?'selected':''}>${y}</option>`).join('')}</select></div></div>
     <div class="f"><label for="s-ap">Aporte mensal (R$)</label><input class="inp" id="s-ap" inputmode="decimal" value="${fN(s.aporte,2)}"></div>
     <div class="f"><label>Dividendos</label><label class="check"><input type="checkbox" id="s-re" ${s.reinv?'checked':''}> reinvestir</label></div>
+    <div class="f"><label for="s-opc">Opções (% ao ano)</label><input class="inp" id="s-opc" inputmode="decimal" value="${s.opc?fN(s.opc,1):''}" placeholder="ex.: 5" title="Renda estimada com venda coberta de calls ou puts, em % ao ano sobre o valor de cada posição. Deixe em branco para não considerar."></div>
+    <div class="f"><label>Ajustes</label><label class="check" title="Mostra tudo em reais de hoje: os aportes antigos são corrigidos pelo IPCA e o ganho é o que sobra acima da inflação"><input type="checkbox" id="s-real" ${s.real?'checked':''}> descontar a inflação</label><label class="check" title="Ações dos EUA convertidas sempre pelo dólar do primeiro mês, como se o câmbio não tivesse mudado"><input type="checkbox" id="s-fx" ${s.semCambio?'checked':''}> sem efeito do câmbio</label><label class="check" title="Desconta 30% dos dividendos dos EUA (retidos lá), 15% dos prêmios de opções e mostra o IR de 15% se vender tudo no fim"><input type="checkbox" id="s-ir" ${s.imposto?'checked':''}> descontar impostos</label></div>
     <div class="f"><button class="btn pri" data-act="sim">Simular</button></div>
     <div class="quick"><span class="note">Começar há:</span>${[[1,'1 ano'],[3,'3 anos'],[5,'5 anos'],[10,'10 anos'],[15,'15 anos'],[20,'20 anos']].map(([n,l])=>`<button class="btn" data-ha="${n}">${l}</button>`).join('')}</div>
    </div>
@@ -688,7 +712,7 @@ function vSim(){
 }
 function readSimNoRender(){
   const s=S.sim, g=id=>document.getElementById(id);
-  if(g('s-val')){ s.valor=num(g('s-val').value)||0; s.aporte=num(g('s-ap').value)||0; s.reinv=g('s-re').checked; s.inicio=g('s-ano').value+'-'+g('s-mes').value; }
+  if(g('s-val')){ s.valor=num(g('s-val').value)||0; s.aporte=num(g('s-ap').value)||0; s.reinv=g('s-re').checked; if(g('s-real')) s.real=g('s-real').checked; if(g('s-ir')) s.imposto=g('s-ir').checked; if(g('s-opc')) s.opc=Math.max(0,num(g('s-opc').value)||0); if(g('s-fx')) s.semCambio=g('s-fx').checked; s.inicio=g('s-ano').value+'-'+g('s-mes').value; }
   if(g('s-tk')) s.tk=g('s-tk').value.trim().toUpperCase();
   if(s.modo==='carteira') S.cart.itens=S.cart.itens.map((x,i)=>({tk:(g('c-tk-'+i)?g('c-tk-'+i).value:x.tk).trim().toUpperCase(),p:g('c-p-'+i)?g('c-p-'+i).value.trim():x.p}));
 }
@@ -700,7 +724,7 @@ function pesos(){
   const soma=w.reduce((a,b)=>a+b,0)||1;
   return {it, w:w.map(v=>v/soma), somaDigitada: temAlgum? raw.reduce((a,v)=>a+(isFinite(v)?v:0),0):null};
 }
-function blocoComposicao(labels, cur, inv, vPreco, vDiv, vSem, vRe, reinv, sps){
+function blocoComposicao(labels, cur, inv, vPreco, vDiv, vSem, vRe, reinv, sps, vOpc, ir){
   const fM=v=>money(v,cur); const pc=x=>`<span class="muted">${fP(x/inv,1,true)}</span>`;
   const spTxt=sps.map(([t,d,f])=>f>=1?`<li><b>${esc(t)}: desdobramento de 1 para ${fN(f,0)}</b> em ${brMes(d)}. Cada ação virou ${fN(f,0)} e o preço foi dividido por ${fN(f,0)}.</li>`:`<li><b>${esc(t)}: grupamento de ${fN(1/f,0)} para 1</b> em ${brMes(d)}. Cada ${fN(1/f,0)} ações viraram 1.</li>`).join('');
   return `<section class="card"><div class="card-h"><h2>De onde veio o resultado</h2><span class="note">${brMes(labels[0])} a ${brMes(labels.at(-1))}</span></div>
@@ -708,18 +732,33 @@ function blocoComposicao(labels, cur, inv, vPreco, vDiv, vSem, vRe, reinv, sps){
      <tr><td class="l">Valor investido</td><td>${fM(inv)}</td><td></td></tr>
      <tr><td class="l">+ Valorização das ações <span class="muted">(só o preço, como no Google)</span></td><td class="${cls(vPreco)}">${fM(vPreco)}</td><td>${pc(vPreco)}</td></tr>
      <tr><td class="l">+ Dividendos e JCP recebidos em dinheiro</td><td class="${cls(vDiv)}">${fM(vDiv)}</td><td>${pc(vDiv)}</td></tr>
+     ${vOpc?`<tr><td class="l">+ Prêmios de opções <span class="muted">(estimativa de ${fN(S.sim.opc,1)}% ao ano sobre a posição)</span></td><td class="${cls(vOpc)}">${fM(vOpc)}</td><td>${pc(vOpc)}</td></tr>`:''}
      <tr class="tot ${reinv?'':'sel'}"><td class="l">= Sem reinvestir os dividendos</td><td>${fM(vSem)}</td><td>${pc(vSem-inv)}</td></tr>
-     <tr><td class="l">+ Ganho extra por reinvestir <span class="muted">(dividendos comprando mais ações)</span></td><td class="${cls(vRe-vSem)}">${fM(vRe-vSem)}</td><td>${pc(vRe-vSem)}</td></tr>
+     <tr><td class="l">+ Ganho extra por reinvestir <span class="muted">(${vOpc?'dividendos e prêmios':'dividendos'} comprando mais ações)</span></td><td class="${cls(vRe-vSem)}">${fM(vRe-vSem)}</td><td>${pc(vRe-vSem)}</td></tr>
      <tr class="tot ${reinv?'sel':''}"><td class="l">= Reinvestindo os dividendos</td><td>${fM(vRe)}</td><td>${pc(vRe-inv)}</td></tr>
+     ${ir?`<tr><td class="l muted" colspan="3" style="padding-top:12px;font-family:var(--f-body)">Impostos: já descontados acima ${fM(ir.pago)} (${[ir.temUS?'30% dos dividendos dos EUA, retidos lá':'',S.sim.opc?'15% sobre os prêmios de opções':''].filter(Boolean).join(' e ')||'nenhum: dividendos da B3 são isentos'}).</td></tr>
+       <tr><td class="l">− IR se vender tudo hoje <span class="muted">(15% sobre o ganho de capital)</span></td><td class="down">${fM(-ir.venda)}</td><td>${pc(-ir.venda)}</td></tr>
+       <tr class="tot sel"><td class="l">= Líquido no bolso, depois de vender</td><td>${fM((reinv?vRe:vSem)-ir.venda)}</td><td>${pc((reinv?vRe:vSem)-ir.venda-inv)}</td></tr>`:''}
+     ${(()=>{ if(!S.sim.real||cur!=='BRL') return ''; const invR=investidoCorrigido(labels,S.sim.valor,S.sim.aporte); if(!invR) return ''; const fim=reinv?vRe:vSem;
+       return `<tr><td class="l">− Inflação do período <span class="muted">(o que o dinheiro investido precisava render só para manter o poder de compra)</span></td><td class="down">${fM(-(invR-inv))}</td><td>${pc(-(invR-inv))}</td></tr>
+       <tr class="tot sel"><td class="l">= Ganho acima da inflação</td><td class="${cls(fim-invR)}">${fM(fim-invR)}</td><td><span class="muted">${fP(fim/invR-1,1,true)} sobre o investido corrigido</span></td></tr>`; })()}
     </tbody></table></div>
     <div class="card-b" style="padding-top:8px">${sps.length?`<p class="note" style="margin:0 0 4px"><b style="color:var(--fg)">Desdobramentos no período</b></p><ul class="note" style="margin:0;padding-left:18px">${spTxt}</ul><p class="note" style="margin:6px 0 0">Desdobramento não muda o patrimônio nem o total de dividendos: você passa a ter mais ações, cada uma valendo e pagando proporcionalmente menos. A conta acima já considera isso.</p>`:'<p class="note" style="margin:0">Nenhum desdobramento ou grupamento no período.</p>'}</div>
    </section>`;
 }
 function kpisBloco(fim, inv, labels, s, cur){
-  const lucro=fim-inv, anos=(labels.length-1)/12, tir=anos>0&&!s.aporte?Math.pow(fim/s.valor,1/anos)-1:null;
+  const anos=(labels.length-1)/12;
+  if(s.real&&cur==='BRL'){ const invR=investidoCorrigido(labels,s.valor,s.aporte);
+    if(invR){ const ganho=fim-invR, f0=fatorInflacao(labels)[0], tirR=anos>0&&!s.aporte?Math.pow(fim/(s.valor*f0),1/anos)-1:null;
+      return {html:`<section class="kpis">
+        <div class="kpi"><span class="lab">Você teria hoje</span><span class="val">${fR(fim)}</span><span class="sub ${cls(ganho)}">${fP(fim/invR-1,1,true)} acima da inflação</span></div>
+        <div class="kpi"><span class="lab">Investido, corrigido pela inflação</span><span class="val">${fR(invR)}</span><span class="sub muted">${fR(inv)} em valores da época · IPCA</span></div>
+        <div class="kpi"><span class="lab">Ganho real</span><span class="val ${cls(ganho)}">${fR(ganho)}</span><span class="sub muted">${ok(tirR)?fP(tirR,1)+' ao ano acima do IPCA':'em reais de hoje'}</span></div>
+       </section>`, cdi:null, real:true}; } }
+  const lucro=fim-inv, tir=anos>0&&!s.aporte?Math.pow(fim/s.valor,1/anos)-1:null;
   const cdi=cur==='BRL'?simBench(labels,s.valor,s.aporte,'cdi'):null, ipca=cur==='BRL'?simBench(labels,s.valor,s.aporte,'ipca'):null;
   return {html:`<section class="kpis">
-    <div class="kpi"><span class="lab">Você teria hoje</span><span class="val">${money(fim,cur)}</span><span class="sub ${cls(lucro)}">${fP(fim/inv-1,1,true)} · ${s.reinv?'reinvestindo':'sem reinvestir'}</span></div>
+    <div class="kpi"><span class="lab">Você teria hoje</span><span class="val">${money(fim,cur)}</span><span class="sub ${cls(lucro)}">${fP(fim/inv-1,1,true)} · ${s.reinv?'reinvestindo':'sem reinvestir'}${s.opc?' · com opções':''}${s.imposto?' · após impostos do caminho':''}</span></div>
     <div class="kpi"><span class="lab">Total investido</span><span class="val">${money(inv,cur)}</span><span class="sub muted">${labels.length-1} meses</span></div>
     <div class="kpi"><span class="lab">Ganho</span><span class="val ${cls(lucro)}">${money(lucro,cur)}</span><span class="sub muted">${ok(tir)?fP(tir,1)+' ao ano':''}</span></div>
     ${cdi?`<div class="kpi"><span class="lab">No CDI teria</span><span class="val">${fR(cdi.at(-1))}</span><span class="sub ${cls(fim-cdi.at(-1))}">${fim>=cdi.at(-1)?'ganhou':'perdeu'} do CDI por ${fR(Math.abs(fim-cdi.at(-1)))}</span></div>`:''}
@@ -728,7 +767,7 @@ function kpisBloco(fim, inv, labels, s, cur){
 }
 const errBox=m=>`<div class="card"><div class="empty">${m}</div></div>`;
 
-async function runSim(){ S.avErro=null; return S.sim.modo==='carteira' ? runCart() : runUma(); }
+async function runSim(){ S.avErro=null; if(S.sim.modo==='rf') return runRF(); return S.sim.modo==='carteira' ? runCart() : runUma(); }
 
 async function runUma(){
   const s=S.sim; const box=$('#sim-out'); if(!box) return;
@@ -736,22 +775,23 @@ async function runUma(){
   if(!h){ box.innerHTML=errBox(S.avErro||('Não há histórico para '+esc(s.tk)+'.')); return; }
   const ini=s.inicio>h.d[0]?s.inicio:h.d[0];
   const labels=h.d.filter(d=>d>=ini); if(labels.length<2){ box.innerHTML=errBox('Data inicial depois do último mês disponível.'); return; }
-  let fx=fxFn(s.tk), cur=moedaTk(s.tk)==='USD'&&!fx?'USD':'BRL';
-  const rP=simPath(h,labels,s.valor,s.aporte,false,true,fx), rC=simPath(h,labels,s.valor,s.aporte,false,false,fx), rR=simPath(h,labels,s.valor,s.aporte,true,false,fx);
+  let fx=fxSim(s.tk,labels), cur=moedaTk(s.tk)==='USD'&&!fx?'USD':'BRL';
+  const op=(s.opc||0)/100, tx=s.imposto?aliquotas(s.tk):null, rP=simPath(h,labels,s.valor,s.aporte,false,true,fx,0,tx), rC=simPath(h,labels,s.valor,s.aporte,false,false,fx,op,tx), rR=simPath(h,labels,s.valor,s.aporte,true,false,fx,op,tx);
   const r=s.reinv?rR:rC, fim=r.out.at(-1), inv=r.invested;
   const sps=(h.sp||[]).filter(([d])=>d>labels[0]&&d<=labels.at(-1)).map(([d,f])=>[s.tk,d,f]);
   const k=kpisBloco(fim,inv,labels,s,cur), ibov=cur==='BRL'?simBench(labels,s.valor,s.aporte,'ibov'):null;
-  const nota=[ini!==s.inicio?`O histórico de ${esc(s.tk)} começa em ${brMes(h.d[0])}; a simulação parte daí.`:'', moedaTk(s.tk)==='USD'?(fx?'Ação dos EUA: os valores estão em reais, convertidos pelo dólar de cada mês (inclui a variação do câmbio).':'Ação dos EUA: valores em dólar. A conversão para reais usa o câmbio histórico que vem com a atualização automática.'):''].filter(Boolean).map(x=>`<p class="note" style="margin:8px 0 0">${x}</p>`).join('');
-  box.innerHTML=`<div style="display:grid;gap:18px">${k.html}${blocoComposicao(labels,cur,inv,rP.out.at(-1)-inv,rC.divs,rC.out.at(-1),rR.out.at(-1),s.reinv,sps)}
+  const nota=[ini!==s.inicio?`O histórico de ${esc(s.tk)} começa em ${brMes(h.d[0])}; a simulação parte daí.`:'', k.real?'Valores em reais de hoje: cada mês foi corrigido pelo IPCA até '+brMes(labels.at(-1))+'.':'', moedaTk(s.tk)==='USD'?(fx?(s.semCambio?'Sem efeito do câmbio: convertido sempre pelo dólar de '+brMes(labels[0])+', como se ele não tivesse mudado.':'Ação dos EUA: os valores estão em reais, convertidos pelo dólar de cada mês (inclui a variação do câmbio).'):'Ação dos EUA: valores em dólar. A conversão para reais usa o câmbio histórico que vem com a atualização automática.'):''].filter(Boolean).map(x=>`<p class="note" style="margin:8px 0 0">${x}</p>`).join('');
+  box.innerHTML=`<div style="display:grid;gap:18px">${k.html}${blocoComposicao(labels,cur,inv,rP.out.at(-1)-inv,rC.divs,rC.out.at(-1),rR.out.at(-1),s.reinv,sps,rC.premios,s.imposto?{pago:(s.reinv?rR:rC).irPago,venda:(s.reinv?rR:rC).irVenda,temUS:moedaTk(s.tk)==='USD'}:null)}
    <section class="card"><div class="card-h"><h2>Evolução do patrimônio</h2><div class="legend"><span><i style="background:var(--s1)"></i>${esc(s.tk)}</span>${k.cdi?'<span><i style="background:var(--s2)"></i>CDI</span>':''}${ibov?'<span><i style="background:var(--s3)"></i>Ibovespa</span>':''}<span><i style="background:var(--s4)"></i>Investido</span></div></div>
     <div class="card-b"><div class="chart-box"><canvas id="ch-sim" aria-label="Gráfico da evolução do patrimônio simulado"></canvas></div>${nota}
-    <p class="note" style="margin:10px 0 0">${s.reinv?'Os proventos de cada mês compram mais ações no preço de fechamento daquele mês, com frações de ação.':'Os proventos ficam parados em dinheiro, sem render juros.'} Sem imposto e sem custos de corretagem. Rentabilidade passada não garante rentabilidade futura.</p></div></section></div>`;
-  const ds=[{label:s.tk,data:r.out,borderColor:css('--s1'),borderWidth:2,pointRadius:0,tension:.1}];
+    <p class="note" style="margin:10px 0 0">${s.reinv?'Os proventos de cada mês compram mais ações no preço de fechamento daquele mês, com frações de ação.':'Os proventos ficam parados em dinheiro, sem render juros.'} Sem imposto e sem custos de corretagem.${s.opc?` A renda de opções é uma estimativa simples: ${fN(s.opc,1)}% ao ano sobre o valor de cada posição, recebidos todo mês. Ela não considera o lado ruim da venda coberta: quando a ação dispara, a call é exercida e você entrega a ação pelo preço combinado, abrindo mão de parte da alta; na put, você pode ter que comprar a ação mais cara do que o mercado. Em ações que sobem muito, o resultado real tende a ficar abaixo do mostrado.`:''} Rentabilidade passada não garante rentabilidade futura.</p></div></section></div>`;
+  const fr=k.real?fatorInflacao(labels):null, R=a=>fr?a.map((v,j)=>v*fr[j]):a;
+  const ds=[{label:s.tk+(fr?' (reais de hoje)':''),data:R(r.out),borderColor:css('--s1'),borderWidth:2,pointRadius:0,tension:.1}];
   if(k.cdi) ds.push({label:'CDI',data:k.cdi,borderColor:css('--s2'),borderWidth:2,pointRadius:0,tension:.1});
-  if(ibov) ds.push({label:'Ibovespa',data:ibov,borderColor:css('--s3'),borderWidth:2,pointRadius:0,tension:.1});
-  ds.push({label:'Investido',data:r.inv,borderColor:css('--s4'),borderWidth:1.5,borderDash:[5,4],pointRadius:0});
+  if(ibov) ds.push({label:'Ibovespa',data:R(ibov),borderColor:css('--s3'),borderWidth:2,pointRadius:0,tension:.1});
+  ds.push({label:fr?'Investido (corrigido)':'Investido',data:fr?investidoAcumCorr(labels,s.valor,s.aporte):r.inv,borderColor:css('--s4'),borderWidth:1.5,borderDash:[5,4],pointRadius:0});
   const o=chartOpts(v=>fBc(v,cur)); o.plugins.tooltip.callbacks.label=c=>c.dataset.label+': '+money(c.parsed.y,cur);
-  if(window.Chart) S.charts.s=new Chart($('#ch-sim'),{type:'line',data:{labels,datasets:ds},options:o});
+  if(window.Chart&&$('#ch-sim')) S.charts.s=new Chart($('#ch-sim'),{type:'line',data:{labels,datasets:ds},options:o});
 }
 
 async function runCart(){
@@ -769,8 +809,8 @@ async function runCart(){
   const ini=[s.inicio,...hs.map(h=>h.d[0])].sort().at(-1), fim=hs.map(h=>h.d.at(-1)).sort()[0];
   if(ini>=fim){ box.innerHTML=errBox('Não há período em comum entre essas ações a partir da data escolhida.'); return; }
   const labels=mesesEntre(ini,fim);
-  const sims=it.map((x,i)=>{ const fx=cur==='BRL'?fxFn(x.tk):null; const v=s.valor*w[i], ap=s.aporte*w[i];
-    return {tk:x.tk,w:w[i],P:simPath(hs[i],labels,v,ap,false,true,fx),C:simPath(hs[i],labels,v,ap,false,false,fx),R:simPath(hs[i],labels,v,ap,true,false,fx)}; });
+  const sims=it.map((x,i)=>{ const fx=cur==='BRL'?fxSim(x.tk,labels):null; const v=s.valor*w[i], ap=s.aporte*w[i];
+    const op=(s.opc||0)/100, tx=s.imposto?aliquotas(x.tk):null; return {tk:x.tk,w:w[i],P:simPath(hs[i],labels,v,ap,false,true,fx,0,tx),C:simPath(hs[i],labels,v,ap,false,false,fx,op,tx),R:simPath(hs[i],labels,v,ap,true,false,fx,op,tx)}; });
   const sum=(k)=>labels.map((_,j)=>sims.reduce((a,x)=>a+x[k].out[j],0));
   const tot=sum(s.reinv?'R':'C'), invA=labels.map((_,j)=>sims.reduce((a,x)=>a+x.C.inv[j],0));
   const inv=invA.at(-1), fimV=tot.at(-1);
@@ -779,7 +819,7 @@ async function runCart(){
   const k=kpisBloco(fimV,inv,labels,s,cur);
   const linhas=sims.map((x,i)=>{ const r=s.reinv?x.R:x.C, v=r.out.at(-1), iv=r.invested; return {i,tk:x.tk,w:x.w,iv,v,ret:v/iv-1,divs:x.C.divs,peso:v/fimV}; });
   const maxPeso=Math.max(...linhas.map(l=>l.peso));
-  const notas=[ini!==s.inicio?`A simulação começa em ${brMes(ini)}, primeiro mês em que todas as ações da carteira têm histórico.`:'', temUS&&cur==='BRL'?'Ações dos EUA convertidas para reais pelo dólar de cada mês.':'', cur==='USD'?'Carteira só com ações dos EUA: valores em dólar.':''].filter(Boolean).map(x=>`<p class="note" style="margin:8px 0 0">${x}</p>`).join('');
+  const notas=[ini!==s.inicio?`A simulação começa em ${brMes(ini)}, primeiro mês em que todas as ações da carteira têm histórico.`:'', temUS&&cur==='BRL'?(s.semCambio?'Sem efeito do câmbio: ações dos EUA convertidas sempre pelo dólar de '+brMes(labels[0])+', como se ele não tivesse mudado.':'Ações dos EUA convertidas para reais pelo dólar de cada mês (inclui a variação do câmbio).'):'', k.real?'Valores em reais de hoje: cada mês foi corrigido pelo IPCA até '+brMes(labels.at(-1))+'.':'', cur==='USD'?'Carteira só com ações dos EUA: valores em dólar.':''].filter(Boolean).map(x=>`<p class="note" style="margin:8px 0 0">${x}</p>`).join('');
   box.innerHTML=`<div style="display:grid;gap:18px">${k.html}
    <div class="two">
     <section class="card"><div class="card-h"><h2>Evolução da carteira</h2><span class="note">valor de cada ação, empilhado</span></div>
@@ -793,14 +833,131 @@ async function runCart(){
     <div class="tbl-wrap"><table><thead><tr><th class="l">Ação</th><th>Peso inicial</th><th>Investido</th><th>Valor hoje</th><th>Retorno</th><th>Dividendos recebidos</th><th>Peso hoje</th></tr></thead>
     <tbody>${linhas.map(l=>`<tr style="cursor:default"><td class="l"><span class="dot" style="background:var(--c${l.i+1})"></span> <span class="tk">${esc(l.tk)}</span></td><td>${fP(l.w,1)}</td><td>${money(l.iv,cur)}</td><td>${money(l.v,cur)}</td><td class="${cls(l.ret)}">${fP(l.ret,1,true)}</td><td>${money(l.divs,cur)}</td><td>${fP(l.peso,1)}</td></tr>`).join('')}
     <tr style="cursor:default" class="tot-row"><td class="l"><b>Carteira</b></td><td>100%</td><td><b>${money(inv,cur)}</b></td><td><b>${money(fimV,cur)}</b></td><td class="${cls(fimV/inv-1)}"><b>${fP(fimV/inv-1,1,true)}</b></td><td><b>${money(vD,cur)}</b></td><td>100%</td></tr></tbody></table></div></section>
-   ${blocoComposicao(labels,cur,inv,vP,vD,vS,vR,s.reinv,sps)}
-   <p class="note">${s.reinv?'Proventos reinvestidos na própria ação que pagou, no fechamento do mês.':'Proventos guardados em dinheiro, sem render juros.'} O aporte mensal é dividido pelos pesos iniciais. Sem imposto e sem corretagem. Rentabilidade passada não garante rentabilidade futura.</p></div>`;
-  const ds=sims.map((x,i)=>{ const c=css('--c'+(i+1)); return {label:x.tk,data:(s.reinv?x.R:x.C).out,borderColor:c,backgroundColor:c+'b3',borderWidth:1,pointRadius:0,fill:i===0?'origin':'-1',tension:.1,stack:'a'}; });
-  ds.push({label:'Investido',data:invA,borderColor:css('--fg'),borderWidth:1.5,borderDash:[5,4],pointRadius:0,fill:false,stack:'inv'});
+   ${blocoComposicao(labels,cur,inv,vP,vD,vS,vR,s.reinv,sps,sims.reduce((a,x)=>a+x.C.premios,0),s.imposto?{pago:sims.reduce((a,x)=>a+(s.reinv?x.R:x.C).irPago,0),venda:sims.reduce((a,x)=>a+(s.reinv?x.R:x.C).irVenda,0),temUS}:null)}
+   <p class="note">${s.reinv?'Proventos reinvestidos na própria ação que pagou, no fechamento do mês.':'Proventos guardados em dinheiro, sem render juros.'} O aporte mensal é dividido pelos pesos iniciais. Sem imposto e sem corretagem.${s.opc?` A renda de opções é uma estimativa simples: ${fN(s.opc,1)}% ao ano sobre o valor de cada posição, recebidos todo mês. Ela não considera o lado ruim da venda coberta: quando a ação dispara, a call é exercida e você entrega a ação pelo preço combinado, abrindo mão de parte da alta; na put, você pode ter que comprar a ação mais cara do que o mercado. Em ações que sobem muito, o resultado real tende a ficar abaixo do mostrado.`:''} Rentabilidade passada não garante rentabilidade futura.</p></div>`;
+  const fr=k.real?fatorInflacao(labels):null, R=a=>fr?a.map((v,j)=>v*fr[j]):a;
+  const ds=sims.map((x,i)=>{ const c=css('--c'+(i+1)); return {label:x.tk,data:R((s.reinv?x.R:x.C).out),borderColor:c,backgroundColor:c+'b3',borderWidth:1,pointRadius:0,fill:i===0?'origin':'-1',tension:.1,stack:'a'}; });
+  ds.push({label:fr?'Investido (corrigido)':'Investido',data:fr?investidoAcumCorr(labels,s.valor,s.aporte):invA,borderColor:css('--fg'),borderWidth:1.5,borderDash:[5,4],pointRadius:0,fill:false,stack:'inv'});
   if(k.cdi) ds.push({label:'CDI',data:k.cdi,borderColor:css('--s2'),borderWidth:2,pointRadius:0,fill:false,stack:'cdi'});
   const o=chartOpts(v=>fBc(v,cur)); o.scales.y.stacked=true; o.plugins.tooltip.callbacks.label=c=>c.dataset.label+': '+money(c.parsed.y,cur);
-  o.plugins.tooltip.callbacks.footer=items=>{ const j=items[0].dataIndex; return 'Carteira: '+money(tot[j],cur); };
-  if(window.Chart) S.charts.c=new Chart($('#ch-cart'),{type:'line',data:{labels,datasets:ds},options:o});
+  o.plugins.tooltip.callbacks.footer=items=>{ const j=items[0].dataIndex; return 'Carteira: '+money(fr?tot[j]*fr[j]:tot[j],cur); };
+  if(window.Chart&&$('#ch-cart')) S.charts.c=new Chart($('#ch-cart'),{type:'line',data:{labels,datasets:ds},options:o});
+}
+
+
+// ===================== simulador de renda fixa =====================
+// Produtos e regras (pessoa física, 2026):
+//  CDB/LC/Tesouro: IR regressivo sobre o rendimento de cada aporte (22,5% até 180 dias, 20% até 360, 17,5% até 720, 15% acima).
+//  LCI/LCA/Poupança: isentos de IR.  Tesouro Direto: taxa de custódia da B3 de 0,20% ao ano (no Tesouro Selic, só acima de R$ 10 mil).
+//  Poupança: com Selic acima de 8,5%, rende 0,5% ao mês + TR (a TR não entra na conta).
+const RF_PRODUTOS={
+  cdb:{nome:'CDB / LC',ir:true,tipos:['cdi','pre','ipca'],padrao:{tipo:'cdi',taxa:100}},
+  lci:{nome:'LCI / LCA',ir:false,tipos:['cdi','pre','ipca'],padrao:{tipo:'cdi',taxa:90}},
+  selic:{nome:'Tesouro Selic',ir:true,custodia:0.002,isentoAte:10000,tipos:['cdi'],padrao:{tipo:'cdi',taxa:100}},
+  pre:{nome:'Tesouro Prefixado',ir:true,custodia:0.002,tipos:['pre'],padrao:{tipo:'pre',taxa:13.5}},
+  ipca:{nome:'Tesouro IPCA+',ir:true,custodia:0.002,tipos:['ipca'],padrao:{tipo:'ipca',taxa:7}},
+  poup:{nome:'Poupança',ir:false,tipos:['poup'],padrao:{tipo:'poup',taxa:0}},
+  livre:{nome:'Taxa livre (sem IR)',ir:false,tipos:['pre'],padrao:{tipo:'pre',taxa:1,taxaUn:'am'}},
+};
+const RF_TIPO={cdi:'% do CDI',pre:'Prefixado',ipca:'IPCA +',poup:'Regra da poupança'};
+function acum12(serie){ if(!serie) return null; const k=Object.keys(serie).sort().slice(-12); if(k.length<12) return null;
+  const d=new Date(); d.setMonth(d.getMonth()-4); const limite=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  if(k.at(-1)<limite) return null;   // série desatualizada: melhor não usar
+  return k.reduce((a,x)=>a*(1+serie[x]/100),1)-1; }
+function rfPadroes(){ const r=S.rf;
+  if(r.cdi==null){ const c=acum12(S.macro&&S.macro.cdi); r.cdi=c!=null?+(c*100).toFixed(2):14.15; r.cdiFonte=c!=null?'últimos 12 meses':'estimativa'; }
+  if(r.ipca==null){ const i=acum12(S.macro&&S.macro.ipca); r.ipca=i!=null?+(i*100).toFixed(2):4.5; r.ipcaFonte=i!=null?'últimos 12 meses':'estimativa'; } }
+function aliqIR(dias){ return dias<=180?0.225:dias<=360?0.20:dias<=720?0.175:0.15; }
+function taxaMensal(r){
+  const aa=x=>Math.pow(1+x,1/12)-1;
+  if(r.tipo==='cdi') return aa(r.cdi/100*r.taxa/100);
+  if(r.tipo==='pre') return r.taxaUn==='am'?r.taxa/100:aa(r.taxa/100);
+  if(r.tipo==='ipca') return aa((1+r.ipca/100)*(1+(r.taxaUn==='am'?Math.pow(1+r.taxa/100,12)-1:r.taxa/100))-1);
+  if(r.tipo==='poup') return 0.005;
+  return 0;
+}
+// Simula mês a mês, com cada aporte guardado como um lote (para o IR regressivo pela idade de cada aporte)
+function simRF(cfg){
+  const P=RF_PRODUTOS[cfg.produto], m=taxaMensal(cfg), n=cfg.meses, cust=P.custodia?Math.pow(1+P.custodia,1/12)-1:0;
+  const lotes=[{ini:cfg.valor,saldo:cfg.valor,mes:0}], serie=[cfg.valor], inv=[cfg.valor]; let investido=cfg.valor, custodiaPaga=0;
+  for(let t=1;t<=n;t++){
+    const total=lotes.reduce((a,l)=>a+l.saldo,0);
+    lotes.forEach(l=>{ l.saldo*=1+m; });
+    if(cust){ const tot=lotes.reduce((a,l)=>a+l.saldo,0), isento=P.isentoAte||0, base=Math.max(0,tot-isento), c=base*cust; if(c>0&&tot>0){ lotes.forEach(l=>{ l.saldo-=c*l.saldo/tot; }); custodiaPaga+=c; } }
+    if(cfg.aporte&&t<n){ lotes.push({ini:cfg.aporte,saldo:cfg.aporte,mes:t}); investido+=cfg.aporte; }
+    serie.push(lotes.reduce((a,l)=>a+l.saldo,0)); inv.push(investido);
+  }
+  const bruto=serie.at(-1); let ir=0;
+  if(P.ir) lotes.forEach(l=>{ const g=l.saldo-l.ini; if(g>0) ir+=g*aliqIR((n-l.mes)*30); });
+  return {bruto,ir,liquido:bruto-ir,investido,custodia:custodiaPaga,serie,inv,mensal:m};
+}
+function rfMeses(r){ return Math.max(1,Math.round(r.unidade==='anos'?r.prazo*12:r.prazo)); }
+function vRF(){
+  rfPadroes(); const r=S.rf, P=RF_PRODUTOS[r.produto];
+  const tipos=P.tipos; if(!tipos.includes(r.tipo)) r.tipo=tipos[0];
+  const taxaLabel=r.tipo==='cdi'?'Taxa (% do CDI)':r.tipo==='ipca'?'Juro acima do IPCA':r.tipo==='poup'?'':'Taxa';
+  return `
+  <section class="card"><div class="card-h"><h2>Simulador</h2>
+    <div class="seg">${[['uma','Uma ação'],['carteira','Carteira'],['rf','Renda fixa']].map(([k,l])=>`<button data-smodo="${k}" aria-pressed="${S.sim.modo===k}">${l}</button>`).join('')}</div></div>
+   <div class="card-b sim-form rf-form">
+    <div class="f"><label for="rf-produto">Investimento</label><select class="inp" id="rf-produto">${Object.entries(RF_PRODUTOS).map(([k,v])=>`<option value="${k}" ${k===r.produto?'selected':''}>${v.nome}</option>`).join('')}</select></div>
+    ${tipos.length>1?`<div class="f"><label for="rf-tipo">Rentabilidade</label><select class="inp" id="rf-tipo">${tipos.map(t=>`<option value="${t}" ${t===r.tipo?'selected':''}>${RF_TIPO[t]}</option>`).join('')}</select></div>`:''}
+    ${r.tipo!=='poup'?`<div class="f"><label for="rf-taxa">${taxaLabel}</label><div class="pair"><input class="inp" id="rf-taxa" inputmode="decimal" value="${fN(r.taxa,2)}">${r.tipo==='cdi'?'<span class="muted" style="align-self:center">%</span>':`<select class="inp" id="rf-taxaun" aria-label="Unidade da taxa"><option value="aa" ${r.taxaUn==='aa'?'selected':''}>% ao ano</option><option value="am" ${r.taxaUn==='am'?'selected':''}>% ao mês</option></select>`}</div></div>`:''}
+    <div class="f"><label for="rf-valor">Valor inicial (R$)</label><input class="inp" id="rf-valor" inputmode="decimal" value="${fN(r.valor,2)}"></div>
+    <div class="f"><label for="rf-aporte">Aporte mensal (R$)</label><input class="inp" id="rf-aporte" inputmode="decimal" value="${fN(r.aporte,2)}"></div>
+    <div class="f"><label for="rf-prazo">Prazo</label><div class="pair"><input class="inp" id="rf-prazo" inputmode="numeric" value="${r.prazo}"><select class="inp" id="rf-unidade" aria-label="Unidade do prazo"><option value="meses" ${r.unidade==='meses'?'selected':''}>meses</option><option value="anos" ${r.unidade==='anos'?'selected':''}>anos</option></select></div></div>
+    <div class="f"><label for="rf-cdi">CDI ao ano (%)</label><input class="inp" id="rf-cdi" inputmode="decimal" value="${fN(r.cdi,2)}" title="Padrão: CDI acumulado nos ${esc(r.cdiFonte)}. Mude para testar outros cenários."></div>
+    <div class="f"><label for="rf-ipca">IPCA ao ano (%)</label><input class="inp" id="rf-ipca" inputmode="decimal" value="${fN(r.ipca,2)}" title="Padrão: IPCA acumulado nos ${esc(r.ipcaFonte)}."></div>
+    <div class="f"><button class="btn pri" data-act="rf">Simular</button></div>
+   </div>
+  </section>
+  <div id="sim-out"><div class="card"><div class="empty">Calculando…</div></div></div>`;
+}
+function lerRF(){ const r=S.rf, g=id=>document.getElementById(id); if(!g('rf-valor')) return;
+  const prod=g('rf-produto').value; if(prod!==r.produto){ r.produto=prod; const d=RF_PRODUTOS[prod].padrao; r.tipo=d.tipo; r.taxa=d.taxa; r.taxaUn=d.taxaUn||'aa'; }
+  else { if(g('rf-tipo')){ const t=g('rf-tipo').value; if(t!==r.tipo){ r.tipo=t; r.taxa=t==='cdi'?100:t==='ipca'?7:13.5; r.taxaUn='aa'; } else if(g('rf-taxa')) r.taxa=num(g('rf-taxa').value)||0; } else if(g('rf-taxa')) r.taxa=num(g('rf-taxa').value)||0;
+    if(g('rf-taxaun')) r.taxaUn=g('rf-taxaun').value; }
+  r.valor=Math.max(0,num(g('rf-valor').value)||0); r.aporte=Math.max(0,num(g('rf-aporte').value)||0);
+  r.prazo=Math.max(1,num(g('rf-prazo').value)||1); r.unidade=g('rf-unidade').value;
+  r.cdi=num(g('rf-cdi').value)||0; r.ipca=num(g('rf-ipca').value)||0; }
+function runRF(){
+  const box=$('#sim-out'); if(!box) return; rfPadroes();
+  const r=S.rf, n=rfMeses(r), res=simRF({...r,meses:n}), P=RF_PRODUTOS[r.produto];
+  const ganho=res.liquido-res.investido, anos=n/12, aaLiq=Math.pow(1+res.mensal,12)-1;
+  const realAa=(1+aaLiq)/(1+r.ipca/100)-1, aaNet=anos>0?Math.pow(res.liquido/res.investido,1/anos)-1:0;
+  const realLiq=r.aporte?((1+aaLiq*(1-(P.ir?res.ir/Math.max(1,res.bruto-res.investido):0)))/(1+r.ipca/100)-1):((1+aaNet)/(1+r.ipca/100)-1);
+  // comparação: mesmos valores e prazo em produtos comuns
+  const comp=[['CDB 100% do CDI',{produto:'cdb',tipo:'cdi',taxa:100}],['CDB 110% do CDI',{produto:'cdb',tipo:'cdi',taxa:110}],['LCI/LCA 90% do CDI',{produto:'lci',tipo:'cdi',taxa:90}],['Tesouro Selic',{produto:'selic',tipo:'cdi',taxa:100}],['Tesouro IPCA+ 7%',{produto:'ipca',tipo:'ipca',taxa:7,taxaUn:'aa'}],['Poupança',{produto:'poup',tipo:'poup',taxa:0}]]
+    .map(([nome,c])=>{ const x=simRF({...r,...c,meses:n}); return {nome,x}; });
+  const melhor=Math.max(...comp.map(c=>c.x.liquido));
+  const prazoTxt=r.unidade==='anos'?`${fN(r.prazo,r.prazo%1?1:0)} ${r.prazo===1?'ano':'anos'}`:`${n} ${n===1?'mês':'meses'}`;
+  const taxaTxt=r.tipo==='cdi'?`${fN(r.taxa,0)}% do CDI (${fN(r.cdi*r.taxa/100,2)}% ao ano)`:r.tipo==='ipca'?`IPCA + ${fN(r.taxa,2)}% ${r.taxaUn==='am'?'ao mês':'ao ano'}`:r.tipo==='poup'?'0,5% ao mês':`${fN(r.taxa,2)}% ${r.taxaUn==='am'?'ao mês':'ao ano'}`;
+  box.innerHTML=`<div style="display:grid;gap:18px">
+   <section class="kpis">
+    <div class="kpi"><span class="lab">Você teria (líquido)</span><span class="val">${fR(res.liquido)}</span><span class="sub ${cls(ganho)}">${fP(res.liquido/res.investido-1,1,true)} em ${prazoTxt}</span></div>
+    <div class="kpi"><span class="lab">Total investido</span><span class="val">${fR(res.investido)}</span><span class="sub muted">${fR(r.valor)} + ${n-1>0&&r.aporte?`${n-1} aportes de ${fR(r.aporte)}`:'sem aportes'}</span></div>
+    <div class="kpi"><span class="lab">Rendimento líquido</span><span class="val ${cls(ganho)}">${fR(ganho)}</span><span class="sub muted">bruto ${fR(res.bruto-res.investido)}</span></div>
+    <div class="kpi"><span class="lab">Imposto de renda</span><span class="val">${P.ir?fR(res.ir):'isento'}</span><span class="sub muted">${P.ir?`${fP(res.ir/Math.max(1,res.bruto-res.investido),1)} do rendimento`:P.nome}</span></div>
+    <div class="kpi"><span class="lab">Acima da inflação</span><span class="val ${cls(realLiq)}">${fP(realLiq,2)} ao ano</span><span class="sub muted">líquido · bruto ${fP(realAa,2)} · taxa ${fP(aaLiq,2)} a.a.</span></div>
+   </section>
+   <div class="two">
+    <section class="card"><div class="card-h"><h2>${esc(P.nome)} · ${esc(taxaTxt)}</h2></div>
+     <div class="card-b"><div class="chart-box"><canvas id="ch-rf" aria-label="Evolução do valor aplicado em renda fixa"></canvas></div>
+     <div class="legend" style="margin-top:10px"><span><i style="background:var(--s1)"></i>Saldo bruto</span><span><i style="background:var(--s4)"></i>Investido</span></div>
+     <p class="note" style="margin:10px 0 0">${P.ir?'Imposto regressivo calculado aporte por aporte: 22,5% no que ficou até 180 dias, 20% até 360, 17,5% até 720 e 15% acima de 2 anos. ':'Isento de imposto de renda. '}${P.custodia?`Desconta a taxa de custódia da B3 de 0,20% ao ano${P.isentoAte?' sobre o que passar de R$ 10 mil':''}: ${fR(res.custodia)} no período. `:''}${r.produto==='poup'?'Poupança com Selic acima de 8,5%: 0,5% ao mês mais a TR, que não entra na conta. ':''}Considera a taxa constante durante todo o prazo e o resgate no último mês. Sem IOF (só vale para resgates antes de 30 dias).</p></div></section>
+    <section class="card"><div class="card-h"><h2>Comparação</h2><span class="note">mesmos valores e prazo, valor líquido</span></div>
+     <div class="tbl-wrap"><table><thead><tr><th class="l">Investimento</th><th>Líquido</th><th>Ganho</th></tr></thead><tbody>
+     ${comp.map(c=>`<tr style="cursor:default"><td class="l">${esc(c.nome)}${c.x.liquido===melhor?' <span class="chip" style="border-color:var(--up);color:var(--up)">melhor</span>':''}</td><td>${fR(c.x.liquido)}</td><td class="${cls(c.x.liquido-c.x.investido)}">${fR(c.x.liquido-c.x.investido)}</td></tr>`).join('')}
+     </tbody></table></div>
+     <p class="note" style="margin:0;padding:10px 16px 14px">Com CDI de ${fN(r.cdi,2)}% e IPCA de ${fN(r.ipca,2)}% ao ano. LCI e LCA costumam pagar menos que o CDB porque são isentas; compare sempre o valor líquido.</p></section>
+   </div></div>`;
+  const labels=res.serie.map((_,i)=>i===0?'início':(i%12===0?`${i/12}º ano`:`mês ${i}`));
+  const topo=Math.max(...res.serie), fy=topo<1e6?(v=>'R$ '+fN(v/1000,topo<1e5?1:0)+' mil'):(v=>fB(v));
+  const o=chartOpts(fy); o.plugins.tooltip.callbacks.title=i=>i[0].label; o.plugins.tooltip.callbacks.label=c=>c.dataset.label+': '+fR(c.parsed.y);
+  o.scales.x.ticks.callback=function(v){ return this.getLabelForValue(v); };
+  if(window.Chart&&$('#ch-rf')) S.charts.rf=new Chart($('#ch-rf'),{type:'line',data:{labels,datasets:[
+    {label:'Saldo bruto',data:res.serie,borderColor:css('--s1'),borderWidth:2,pointRadius:0,tension:.1},
+    {label:'Investido',data:res.inv,borderColor:css('--s4'),borderWidth:1.5,borderDash:[5,4],pointRadius:0}]},options:o});
 }
 
 // ===================== busca =====================
@@ -834,12 +991,14 @@ document.addEventListener('click',e=>{
   else if(d.modo){ S.modo=d.modo; render(); }
   else if(d.simular){ S.sim.tk=d.simular; S.sim.modo='uma'; setTab('simulador'); }
   else if(d.act==='sim') readSim();
+  else if(d.act==='rf'){ lerRF(); render(); }
 });
 document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.f){ S.f[el.dataset.f]= el.type==='checkbox'?el.checked:el.value; render(); }
   if(el.dataset.rk){ const k=el.dataset.rk; S.rk[k]= el.type==='checkbox'?el.checked:(k==='asc'?!!el.value:el.value); render(); }
-  if(['s-tk','s-mes','s-ano','s-re'].includes(el.id)||/^c-(tk|p)-/.test(el.id)) readSim();
+  if(/^rf-/.test(el.id)){ lerRF(); render(); return; }
+  if(['s-tk','s-mes','s-ano','s-re','s-real','s-fx','s-opc','s-ir'].includes(el.id)||/^c-(tk|p)-/.test(el.id)) readSim();
 });
 document.addEventListener('keydown',e=>{
   if(e.target.id==='q'){
@@ -850,10 +1009,30 @@ document.addEventListener('keydown',e=>{
     else if(e.key==='Escape') $('#sugs').hidden=true;
   }
   if(e.key==='Enter'&&e.target.closest('.filters')) e.target.blur();
+  if(e.key==='Enter'&&e.target.closest('.rf-form')){ lerRF(); render(); return; }
   if(e.key==='Enter'&&e.target.closest('.sim-form')) readSim();
 });
 window.addEventListener('hashchange',()=>{ const h=(location.hash||'').slice(1).toUpperCase(); if(h&&byTk(h)&&h!==S.tk){ S.tk=h; setTab('acao'); } });
 document.addEventListener('input',e=>{ if(e.target.id==='q'){ sugIdx=-1; sugs(e.target.value); } });
+
+
+// ===================== tema claro / escuro =====================
+const TEMAS=['sistema','claro','escuro'];
+const ICONE={sistema:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  claro:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  escuro:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'};
+function aplicaTema(t,redesenha){
+  const r=document.documentElement;
+  if(t==='claro') r.setAttribute('data-theme','light'); else if(t==='escuro') r.setAttribute('data-theme','dark'); else r.removeAttribute('data-theme');
+  const b=document.getElementById('tema'); if(b) b.innerHTML=ICONE[t]+'<span>'+({sistema:'Sistema',claro:'Claro',escuro:'Escuro'})[t]+'</span>';
+  try{ localStorage.setItem('painel-tema',t); }catch{}
+  if(redesenha&&S.rows.length) render();   // gráficos pegam as cores do tema na hora de desenhar
+}
+let temaAtual='sistema'; try{ temaAtual=localStorage.getItem('painel-tema')||'sistema'; }catch{}
+if(!TEMAS.includes(temaAtual)) temaAtual='sistema';
+aplicaTema(temaAtual,false);
+document.getElementById('tema').addEventListener('click',()=>{ temaAtual=TEMAS[(TEMAS.indexOf(temaAtual)+1)%3]; aplicaTema(temaAtual,true); });
+try{ matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{ if(temaAtual==='sistema'&&S.rows.length) render(); }); }catch{}
 
 // ===================== início =====================
 (async function(){
