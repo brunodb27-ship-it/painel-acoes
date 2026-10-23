@@ -31,6 +31,7 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent))
 import fundamentos as F  # noqa: E402
 import historico as H  # noqa: E402
+import score as SC  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 SAIDA = RAIZ / "docs" / "data"
@@ -440,6 +441,20 @@ def main():
         log("ranking:", len(rk["dados"]), "ativos; balanços", rk["primeiro_balanco"], "a", ult)
     except Exception as e:  # noqa: BLE001
         log("ranking falhou, seguindo sem ele:", e)
+
+    # --- score técnico + fundamentalista, com pesos calibrados pelo backtest
+    try:
+        h_all = hist if hist else _ler_hist()
+        try:
+            rk_atual = json.loads((SAIDA / "ranking.json").read_text())
+        except Exception:  # noqa: BLE001
+            rk_atual = {}
+        bt = SC.backtest(h_all)
+        sc = SC.calcular(linhas, h_all, rk_atual, HOJE, bt)
+        (SAIDA / "sinais.json").write_text(json.dumps(sc, ensure_ascii=False, separators=(",", ":")))
+        log("sinais:", len(sc["dados"]), "ativos; backtest com", (bt or {}).get("base", {}).get("n"), "meses")
+    except Exception as e:  # noqa: BLE001
+        log("sinais falharam, seguindo sem eles:", e)
 
     meta = {
         "atualizado_em": dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).strftime("%Y-%m-%d %H:%M"),
