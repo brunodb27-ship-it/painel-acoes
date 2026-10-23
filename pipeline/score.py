@@ -335,6 +335,33 @@ def tecnica(h, hoje: dt.date | None):
         elif ifr >= 70:
             add("IFR sobrecomprado", -10, f"IFR de 14 meses em {_fmt(ifr, 0)}: alta esticada", "baixa")
 
+    # longo prazo: média de 36 meses e distância do topo de 5 anos (com dividendos, para não punir boa pagadora)
+    aviso_lp = None
+    A = h.get("a") or C
+    if n >= 36 and all(_ok(x) and x > 0 for x in A[-36:]):
+        m36 = sum(A[-36:]) / 36
+        m36_ant = sum(A[-42:-6]) / 36 if n >= 42 else None
+        if A[-1] > m36 and (m36_ant is None or m36 >= m36_ant):
+            add("Acima da média de 36 meses", 6, "longo prazo: retorno com dividendos acima da média de 3 anos, que está subindo", "alta")
+        elif A[-1] < m36 and (m36_ant is None or m36 < m36_ant):
+            add("Abaixo da média de 36 meses", -6, "longo prazo: retorno com dividendos abaixo da média de 3 anos, que está caindo", "baixa")
+        jan5 = [x for x in A[-60:] if _ok(x) and x > 0]
+        topo = max(jan5)
+        i_topo = n - len(A[-60:]) + A[-60:].index(topo)
+        queda = 1 - A[-1] / topo
+        quando = _m(d[i_topo])
+        if queda <= 0.10:
+            add("Perto do topo de 5 anos", 4, f"a até 10% do maior valor dos últimos 5 anos ({quando}), contando dividendos", "alta")
+        elif queda <= 0.30:
+            add("10–30% abaixo do topo de 5 anos", 0, f"{_fmt_pct(queda, 0)} abaixo do maior valor dos últimos 5 anos ({quando}), contando dividendos", "neutro")
+        elif queda <= 0.50:
+            add("30–50% abaixo do topo de 5 anos", -4, f"{_fmt_pct(queda, 0)} abaixo do maior valor dos últimos 5 anos ({quando}), contando dividendos", "baixa")
+        else:
+            add("Mais de 50% abaixo do topo de 5 anos", -6, f"{_fmt_pct(queda, 0)} abaixo do maior valor dos últimos 5 anos ({quando}), contando dividendos", "baixa")
+        if queda > 0.40:
+            aviso_lp = (f"Queda forte no longo prazo: mesmo com dividendos, está {_fmt_pct(queda, 0)} abaixo do topo de {quando}. "
+                        "Uma reação recente pode ser só um repique. Descubra o motivo da queda antes de tudo.")
+
     # Fibonacci da última perna completa (dois pivôs confirmados de 20% ou mais)
     jan = C[-72:]
     off = n - len(jan)
@@ -397,7 +424,8 @@ def tecnica(h, hoje: dt.date | None):
         padroes.append({"nome": nome, "tipo": tipo, "mes": d[-1]})
 
     score = max(0, min(100, 50 + sum(s["pontos"] for s in sinais)))
-    return {"score": score, "sinais": sinais, "padroes": padroes, "fib": fib, "ifr": None if ifr is None else round(ifr, 1)}
+    return {"score": score, "sinais": sinais, "padroes": padroes, "fib": fib, "ifr": None if ifr is None else round(ifr, 1),
+            "aviso_lp": aviso_lp}
 
 
 # ------------------------------------------------------------------ junção
@@ -420,6 +448,45 @@ def sinal(f, t):
 
 def _fatia(h, i):
     return {k: h[k][: i + 1] for k in ("d", "c", "a", "o", "h", "l") if h.get(k)}
+
+
+GRUPOS_EXCLUSIVOS = [
+    ["Tendência de alta", "Tendência de baixa", "Sem tendência definida"],
+    ["Perto do topo de 5 anos", "10–30% abaixo do topo de 5 anos", "30–50% abaixo do topo de 5 anos",
+     "Mais de 50% abaixo do topo de 5 anos"],
+]
+
+
+def _pesos_conjuntos(meses, nomes, l2=30.0, iters=400):
+    """Regressão logística (subiu ou não em 6 meses) com todos os sinais juntos.
+    Assim sinais que dizem a mesma coisa (tendência de 12 meses, média de 36, topo de 5 anos) não somam
+    pontos em dobro: cada um ganha só o que acrescenta além dos outros."""
+    import numpy as np
+    idx = {k: i for i, k in enumerate(nomes)}
+    X = np.zeros((len(meses), len(nomes)), dtype=np.float32)
+    y = np.zeros(len(meses), dtype=np.float32)
+    for j, (r, ns) in enumerate(meses):
+        y[j] = 1.0 if r > 0 else 0.0
+        for nm in ns:
+            if nm in idx:
+                X[j, idx[nm]] = 1.0
+    w = np.zeros(len(nomes)); b = 0.0
+    n = len(meses)
+    for _ in range(iters):  # descida de gradiente simples (Newton seria mais rápido, mas isto basta)
+        z = X @ w + b
+        p = 1 / (1 + np.exp(-z))
+        g = p - y
+        w -= 1.5 * ((X.T @ g) / n + l2 * w / n)
+        b -= 1.5 * float(g.mean())
+    # grupos em que sempre aparece exatamente um sinal: o peso só tem sentido comparado com os irmãos,
+    # então cada grupo é centrado na média (ponderada pela frequência)
+    freq = X.sum(axis=0)
+    for grupo in GRUPOS_EXCLUSIVOS:
+        ii = [idx[k] for k in grupo if k in idx]
+        if len(ii) > 1 and freq[ii].sum() > 0:
+            w[ii] -= float((w[ii] * freq[ii]).sum() / freq[ii].sum())
+    # 0,1 de log-odds ≈ 2,5 pontos percentuais de chance de subir; vira ~5 pontos de score
+    return {k: int(round(max(-15, min(15, w[i] * 50)))) for k, i in idx.items()}
 
 
 def backtest(hist, horizonte=6, desde="2012-01"):
@@ -452,14 +519,12 @@ def backtest(hist, horizonte=6, desde="2012-01"):
     for r, nomes in meses:
         for nm in nomes:
             por_sinal.setdefault(nm, []).append(r)
+    nomes_ok = sorted(k for k, rs in por_sinal.items() if len(rs) >= 30)
+    pesos = _pesos_conjuntos(meses, nomes_ok)
     sinais = {}
-    for k, rs in por_sinal.items():
-        if len(rs) < 30:
-            continue
-        res = resumo(rs)
-        # peso = quanto o sinal mudou a chance de subir, encolhido quando há poucos casos
-        dif = res["positivos"] - base["positivos"]
-        res["peso"] = int(round(max(-15, min(15, dif * len(rs) / (len(rs) + 400) * 200))))
+    for k in nomes_ok:
+        res = resumo(por_sinal[k])
+        res["peso"] = pesos.get(k, 0)
         sinais[k] = res
     faixas = {}
     for r, nomes in meses:
@@ -482,6 +547,22 @@ def aplicar_pesos(te, bt):
             x["tipo"] = "alta" if st["peso"] >= 3 else "baixa" if st["peso"] <= -3 else "neutro"
     te["score"] = max(0, min(100, 50 + sum(x["pontos"] for x in te["sinais"])))
     return te
+
+
+def concordancia(f, t):
+    """Se fundamentos e gráfico apontam para o mesmo lado. Não é probabilidade de acerto."""
+    if f is None or t is None:
+        return None
+    lado = lambda s: 1 if s >= 55 else -1 if s <= 45 else 0  # noqa: E731
+    lf, lt = lado(f), lado(t)
+    if lf and lt and lf != lt:
+        return "baixa"
+    if lf and lf == lt:
+        forte = (f >= 65 or f <= 35) and (t >= 65 or t <= 35)
+        return "alta" if forte else "media"
+    if lf or lt:
+        return "media"
+    return "sem_direcao"
 
 
 def calcular(linhas, hist, ranking, hoje: dt.date, bt=None):
@@ -511,7 +592,7 @@ def calcular(linhas, hist, ranking, hoje: dt.date, bt=None):
             continue
         fs, ts = (f or {}).get("score"), (te or {}).get("score")
         total = round(0.6 * fs + 0.4 * ts) if fs is not None and ts is not None else (fs if fs is not None else ts)
-        out[t] = {"f": f, "t": te, "total": total, "sinal": sinal(fs, ts)}
+        out[t] = {"f": f, "t": te, "total": total, "sinal": sinal(fs, ts), "conc": concordancia(fs, ts)}
     bt_resumo = None
     if bt:
         bt_resumo = {k: v for k, v in bt.items()}

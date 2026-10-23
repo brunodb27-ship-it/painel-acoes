@@ -255,3 +255,142 @@ def ranking(linhas: list[dict], hist: dict, anual: dict, ultimo_balanco: int, me
         out[t] = res
     return {"janelas": JANELAS, "fim_preco": mes_fim, "fim_balanco": ultimo_balanco,
             "primeiro_balanco": min(anual.get("anos") or [PRIMEIRO_ANO]), "dados": out}
+
+
+# ------------------------------------------------------------------ histórico dos indicadores (gráfico de barras)
+IND_HIST = ["pl", "pvp", "roe", "m_ebit", "m_liq", "dy", "receita", "lucro"]
+
+
+def _valido(k, v):
+    if v is None:
+        return False
+    if k in ("pl", "pvp"):
+        return 0 < v < 200
+    if k in ("m_ebit", "m_liq"):
+        return -1 < v <= 1
+    if k == "roe":
+        return -2 < v < 2
+    if k == "dy":
+        return 0 <= v < 0.6
+    return True
+
+
+def _mediana(xs):
+    xs = sorted(xs)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return xs[m] if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+
+
+def serie_indicadores(linhas: list[dict], hist: dict, anual: dict, cnpj_de: dict) -> dict:
+    """Indicadores de cada empresa ano a ano (balanço anual da CVM + preço de fim de ano)
+    e a mediana do setor em cada ano, para o gráfico de barras da ficha."""
+    por_cnpj = anual.get("dados", {})
+    anos = sorted(int(a) for a in anual.get("anos", []))
+    if not anos:
+        return {}
+    precos_ano = {t: _preco_fim_ano(h) for t, h in hist.items()}
+    tickers_cnpj = {}
+    for t, c in cnpj_de.items():
+        tickers_cnpj.setdefault(c, []).append(t)
+    info = {r["ticker"]: r for r in linhas}
+
+    def vm(cnpj, ano, reg):
+        tks = tickers_cnpj.get(cnpj, [])
+        p_on = next((precos_ano.get(t, {}).get(str(ano)) for t in tks if t.endswith("3") and precos_ano.get(t, {}).get(str(ano))), None)
+        p_pn = next((precos_ano.get(t, {}).get(str(ano)) for t in tks if t[-1] in "456" and precos_ano.get(t, {}).get(str(ano))), None)
+        p_any = p_on or p_pn
+        if not p_any:
+            return None
+        on, pn = reg.get("acoes_on") or 0, reg.get("acoes_pn") or 0
+        if on + pn <= 0:
+            return None
+        pl = reg.get("patrimonio")
+        if pl and pl / (on + pn) / p_any > 100:
+            on, pn = on * 1000, pn * 1000
+        return on * (p_on or p_any) + pn * (p_pn or p_any)
+
+    emp, tk_emp, grupo_emp = {}, {}, {}
+    for t, cnpj in cnpj_de.items():
+        r = info.get(t)
+        if not r or cnpj not in por_cnpj:
+            continue
+        tk_emp[t] = cnpj
+        if cnpj in emp:
+            continue
+        regs = por_cnpj[cnpj]
+        serie = {k: [] for k in IND_HIST}
+        banco = bool(r.get("banco"))
+        for ano in anos:
+            reg = regs.get(str(ano))
+            vals = dict.fromkeys(IND_HIST)
+            if reg:
+                rec, eb, ll, pat, prov = (reg.get(x) for x in ("receita", "ebit", "lucro", "patrimonio", "proventos"))
+                v = vm(cnpj, ano, reg)
+                vals["receita"] = None if banco else rec
+                vals["lucro"] = ll
+                if rec and rec > 0 and not banco:
+                    vals["m_ebit"] = eb / rec if eb is not None else None
+                    vals["m_liq"] = ll / rec if ll is not None else None
+                if ll is not None and pat and pat > 0:
+                    vals["roe"] = ll / pat
+                if v:
+                    vals["pl"] = v / ll if ll and ll > 0 else None
+                    vals["pvp"] = v / pat if pat and pat > 0 else None
+                    vals["dy"] = prov / v if prov is not None else None
+            for k in IND_HIST:
+                x = vals[k]
+                if x is not None and k not in ("receita", "lucro") and not _valido(k, x):
+                    x = None
+                serie[k].append(None if x is None else (round(x, 4) if k not in ("receita", "lucro") else round(x)))
+        emp[cnpj] = serie
+        grupo_emp[cnpj] = f"{r.get('setor') or ''}|{1 if banco else 0}"
+
+    # mediana por setor (mínimo de 5 empresas com dado no ano, para a própria empresa não virar a mediana); a página usa o mercado inteiro quando o setor não tem dados
+    def medianas(cnpjs):
+        out = {}
+        for k in IND_HIST:
+            if k in ("receita", "lucro"):
+                continue
+            col = []
+            for i in range(len(anos)):
+                # DY zero quase sempre é provento não encontrado na DVA, não falta de pagamento: fica fora
+                xs = [emp[c][k][i] for c in cnpjs if emp[c][k][i] is not None and not (k == "dy" and emp[c][k][i] == 0)]
+                col.append(round(_mediana(xs), 4) if len(xs) >= 5 else None)
+            out[k] = col
+        return out
+    grupos = {}
+    for c, g in grupo_emp.items():
+        grupos.setdefault(g, []).append(c)
+    setor = {g: medianas(cs) for g, cs in grupos.items()}
+    mercado = {b: medianas([c for c, g in grupo_emp.items() if g.endswith("|" + b)]) for b in ("0", "1")}
+    # cnpj vira um número curto para o arquivo ficar menor
+    ids = {c: i for i, c in enumerate(emp)}
+    return {"anos": anos, "emp": {str(ids[c]): v for c, v in emp.items()},
+            "tk": {t: str(ids[c]) for t, c in tk_emp.items()},
+            "grupo": {str(ids[c]): g for c, g in grupo_emp.items()},
+            "ngrupo": {g: len(cs) for g, cs in grupos.items()},
+            "setor": setor, "mercado": mercado}
+
+
+def guardar_trimestres(arquivo: Path, linhas: list[dict]) -> int:
+    """Daqui para frente: guarda os números de cada balanço trimestral (12 meses) que sai,
+    para o histórico ficar mais detalhado com o tempo. Um registro por ação e data de balanço."""
+    try:
+        tri = json.loads(arquivo.read_text())
+    except Exception:  # noqa: BLE001
+        tri = {}
+    campos = ["receita_12m", "lucro_12m", "ebitda_12m", "patrimonio", "roe", "m_ebit", "m_liq",
+              "div_liq_ebitda", "lpa", "vpa", "dpa_12m", "pl", "pvp", "dy", "preco"]
+    novos = 0
+    for r in linhas:
+        if (r.get("mercado") or "Brasil") != "Brasil" or not r.get("data_balanco"):
+            continue
+        reg = tri.setdefault(r["ticker"], {})
+        if r["data_balanco"] in reg:
+            continue  # o primeiro registro de cada balanço fica: preço e P/L do dia em que saiu o resultado
+        reg[r["data_balanco"]] = {k: r.get(k) for k in campos if r.get(k) is not None}
+        novos += 1
+    arquivo.write_text(json.dumps(tri, ensure_ascii=False, separators=(",", ":")))
+    return novos

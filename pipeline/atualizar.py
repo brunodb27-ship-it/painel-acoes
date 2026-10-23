@@ -439,8 +439,20 @@ def main():
         rk = H.ranking(linhas, hist if hist else _ler_hist(), anual, ult, HOJE.strftime("%Y-%m"), cnpj_de)
         (SAIDA / "ranking.json").write_text(json.dumps(rk, ensure_ascii=False, separators=(",", ":")))
         log("ranking:", len(rk["dados"]), "ativos; balanços", rk["primeiro_balanco"], "a", ult)
+        try:
+            hi = H.serie_indicadores(linhas, hist if hist else _ler_hist(), anual, cnpj_de)
+            (SAIDA / "historico_ind.json").write_text(json.dumps(hi, ensure_ascii=False, separators=(",", ":")))
+            log("histórico dos indicadores:", len(hi.get("emp", {})), "empresas")
+        except Exception as e:  # noqa: BLE001
+            log("histórico dos indicadores falhou:", e)
     except Exception as e:  # noqa: BLE001
         log("ranking falhou, seguindo sem ele:", e)
+
+    # --- balanços trimestrais guardados daqui para frente
+    try:
+        log("trimestres guardados:", H.guardar_trimestres(SAIDA / "trimestres.json", linhas), "novos")
+    except Exception as e:  # noqa: BLE001
+        log("trimestres falharam:", e)
 
     # --- score técnico + fundamentalista, com pesos calibrados pelo backtest
     try:
