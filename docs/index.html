@@ -63,7 +63,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .sugs button{display:flex;gap:10px;width:100%;text-align:left;background:none;border:0;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
 .sugs button:hover,.sugs button.on{background:var(--panel2)}
 .sugs b{font-family:var(--f-display);min-width:64px}
-nav.tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;max-width:100%;scrollbar-width:none;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px}
 nav.tabs button{background:none;border:0;padding:6px 12px;border-radius:6px;color:var(--muted);cursor:pointer;font-weight:500;white-space:nowrap}
 nav.tabs button[aria-selected="true"]{background:var(--panel2);color:var(--fg);position:relative}
 nav.tabs button[aria-selected="true"]::after{content:"";position:absolute;left:8px;right:8px;bottom:2px;height:2px;border-radius:2px;background:var(--grad)}
@@ -125,6 +125,25 @@ th.hl{color:var(--accent)}
 .ind .v{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .ind .ref{display:block;font-size:10.5px;color:var(--muted);text-align:right;font-family:var(--f-body)}
 .ind .ref.bom{color:var(--up)} .ind .ref.ruim{color:var(--down)}
+.sgbar{display:inline-block;vertical-align:middle;width:64px;height:6px;border-radius:99px;background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line);margin-right:8px;overflow:hidden}
+.sgbar i{display:block;height:100%;border-radius:99px}
+.sgbar.sm{width:54px;flex:none}
+.sgtag{display:inline-block;font-family:var(--f-body);font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);margin:1px 0;white-space:nowrap}
+.sgtag.bom{color:var(--up);border-color:color-mix(in srgb,var(--up) 45%,transparent);background:var(--up-soft)}
+.sgtag.ruim{color:var(--down);border-color:color-mix(in srgb,var(--down) 45%,transparent);background:var(--down-soft)}
+.sglado{font-family:var(--f-body);font-size:12px;font-weight:600;color:var(--muted)}
+.sglado.bom{color:var(--up)} .sglado.bom2{color:color-mix(in srgb,var(--up) 75%,var(--muted))}
+.sglado.ruim{color:var(--down)} .sglado.ruim2{color:color-mix(in srgb,var(--down) 75%,var(--muted))} .sglado.aviso{color:var(--accent)}
+td.sgwrap{white-space:normal;min-width:220px}
+.sgh{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 6px}
+.sggrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.sgcol h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-size:14px;margin:0 0 6px}
+.sgcol h3 b{font-family:var(--f-mono);font-size:18px;color:var(--accent)}
+.sgcol h3 small{flex-basis:100%;font-weight:400;font-size:11.5px;color:var(--muted)}
+.sgit{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.sgit small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.sgit>b{font-family:var(--f-mono)}
+@media (max-width:760px){ .sggrid{grid-template-columns:1fr} }
 .fibrow{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin:12px 0 0}
 .fibrow .fld{display:grid;gap:3px}
 .fibrow .fld b{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
@@ -201,6 +220,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <button role="tab" data-tab="buscador">Buscador</button>
     <button role="tab" data-tab="acao">Ação</button>
     <button role="tab" data-tab="ranking">Ranking</button>
+    <button role="tab" data-tab="sinais">Sinais</button>
     <button role="tab" data-tab="simulador">Simulador</button>
   </nav>
   <button class="btn" data-todas="1">Todas as ações</button>
@@ -212,7 +232,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
 // ===================== estado =====================
-const S = { tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
+const S = { sg:{visao:'ambos',lado:'',mercado:'',setor:'',padrao:'',liq:'1000',top:'50'}, tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
   range:'10', modo:'preco', graf:'linha', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
@@ -297,18 +317,19 @@ async function loadHist(t){
 function setTab(t){ S.tab=t; document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t)); render(); }
 function render(){
   Object.values(S.charts).forEach(c=>c&&c.destroy()); S.charts={};
-  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank}[S.tab]; $('#app').innerHTML=v(); after();
+  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais}[S.tab]; $('#app').innerHTML=v(); after();
 }
 function after(){
   if(S.tab==='acao') drawAcao();
   if(S.tab==='simulador') runSim();
   if(S.tab==='ranking'&&!S.rank&&!S.rankErr) loadRank();
+  if(S.sinais===undefined&&!S._sgLoading){ S._sgLoading=true; loadSinais().then(()=>{ if(['sinais','acao','buscador'].includes(S.tab)) render(); }); }
 }
 
 // ===================== buscador =====================
 const COLS=[
   ['ticker','Ação','l'],['setor','Setor','l'],['preco','Preço'],['pl','P/L'],['pvp','P/VP'],['dy','DY'],['roe','ROE'],['m_liq','Marg. líq.'],
-  ['div_liq_ebitda','DL/EBITDA'],['ev_ebitda','EV/EBITDA'],['var_12m','12 meses'],['liquidez','Liq./dia'],['valor_mercado','Valor merc.']];
+  ['div_liq_ebitda','DL/EBITDA'],['ev_ebitda','EV/EBITDA'],['var_12m','12 meses'],['liquidez','Liq./dia'],['valor_mercado','Valor merc.'],['score','Score']];
 const PRESETS={
   'Graham':{plMin:'0',plMax:'15',pvpMax:1.5},
   'Dividendos':{dyMin:'6',plMin:'0'},
@@ -331,7 +352,7 @@ function filtered(){
   if(isFinite(n(f.dlMax))) r=r.filter(x=>x.banco||(ok(x.div_liq_ebitda)&&x.div_liq_ebitda<=n(f.dlMax)));
   if(isFinite(n(f.liqMin))) r=r.filter(x=>ok(x.liquidez)&&x.liquidez>=n(f.liqMin)*1000);
   const {k,d}=S.sort;
-  return [...r].sort((a,b)=>{ const va=k==='dy'?dyDe(a):a[k], vb=k==='dy'?dyDe(b):b[k]; if(typeof va==='string'||typeof vb==='string') return d*String(va??'').localeCompare(String(vb??''));
+  return [...r].sort((a,b)=>{ const vv=x=>k==='dy'?dyDe(x):k==='score'?(sgDe(x.ticker)||{}).total:x[k]; const va=vv(a), vb=vv(b); if(typeof va==='string'||typeof vb==='string') return d*String(va??'').localeCompare(String(vb??''));
     if(!ok(va)) return 1; if(!ok(vb)) return -1; return d*(va-vb); });
 }
 function cell(r,k){
@@ -340,6 +361,7 @@ function cell(r,k){
     case 'ticker': return `<td class="l"><span class="tk">${esc(v)}</span>${r.moeda==='USD'?'<span class="chip" style="margin-left:6px;padding:0 6px">EUA</span>':''}<div class="co">${esc(r.empresa)}</div></td>`;
     case 'setor': return `<td class="l"><span class="co set" title="${esc(v||'')}">${esc((v||'').replace(/^Emp\. Adm\. Part\. - /,''))}</span></td>`;
     case 'preco': return `<td>${ok(v)?fN(v):'—'}</td>`;
+    case 'score': { const x=sgDe(r.ticker), sc=x?x.total:null; const [,tom]=sgLado(x,'ambos'); return `<td class="${/^bom/.test(tom)?'up':/^ruim/.test(tom)?'down':''}" title="${esc(sgLado(x,'ambos')[0])}">${ok(sc)?sc:'—'}</td>`; }
     case 'dy': { const d=dyDe(r); return `<td>${fP(d)}</td>`; }
     case 'roe': case 'm_liq': return `<td class="${cls(v)}">${fP(v)}</td>`;
     case 'var_12m': return `<td class="${cls(v)}">${fP(v,1,true)}</td>`;
@@ -440,6 +462,131 @@ function vRank(){
 }
 function mesTxt(ym,deltaAnos){ const y=+ym.slice(0,4)+deltaAnos, m=ym.slice(5,7); return m+'/'+y; }
 
+// ===================== sinais: score técnico, fundamentalista ou os dois =====================
+const SG_VISOES=[['ambos','Os dois'],['fund','Fundamentalista'],['tec','Técnica']];
+const SG_INFO={
+  ambos:'Junta as duas leituras: 60% fundamentos (qualidade e preço contra o setor) e 40% gráfico. O destaque vai para quando as duas apontam para o mesmo lado. ETFs e ativos sem balanço aparecem só na visão Técnica.',
+  fund:'Só os números da empresa: qualidade (ROE e margens de 10 anos, anos com lucro, dívida, crescimento) e preço (P/L, P/VP e EV/EBITDA contra o setor, DY de hoje contra a média de 10 anos da própria ação).',
+  tec:'Só o gráfico mensal: tendência pela média de 12 meses, IFR, posição na retração de Fibonacci da última perna, candles (martelo, engolfo, estrela cadente, enforcado, doji) e figuras (ombro-cabeça-ombro, OCO invertido, topo e fundo duplo). Cada sinal pesa conforme o que entregou no histórico destas ações.'
+};
+async function loadSinais(){
+  if(S.sinais!==undefined) return S.sinais;
+  try{ S.sinais=await getJSON('data/sinais.json'); }catch{ S.sinais=null; }
+  return S.sinais;
+}
+function sgDe(t){ return S.sinais&&S.sinais.dados?S.sinais.dados[t]:null; }
+function sgScore(x,v){ if(!x) return null; v=v||S.sg.visao; return v==='fund'?(x.f?x.f.score:null):v==='tec'?(x.t?x.t.score:null):x.total; }
+function sgLado(x,v){
+  v=v||S.sg.visao; if(!x) return ['—',''];
+  if(v==='ambos'){
+    return ({convergencia_compra:['Compra: fundamentos + gráfico','bom'],convergencia_venda:['Venda: fundamentos + gráfico','ruim'],
+      grafico_compra:['Gráfico comprador','bom2'],grafico_venda:['Gráfico vendedor','ruim2'],fundamentos_bons:['Boa e barata, gráfico neutro','bom2'],
+      boa_empresa_grafico_fraco:['Boa empresa, gráfico fraco','aviso'],neutro:['Neutro','']})[x.sinal]||['Neutro',''];
+  }
+  const s=sgScore(x,v); if(!ok(s)) return ['—',''];
+  if(v==='fund') return s>=65?['Atrativa','bom']:s<=35?['Pouco atrativa','ruim']:['Neutra',''];
+  return s>=65?['Compra','bom']:s<=35?['Venda','ruim']:['Neutro',''];
+}
+function sgBarra(s){ if(!ok(s)) return '<span class="muted">—</span>';
+  const c=s>=65?'var(--up)':s<=35?'var(--down)':'var(--muted)';
+  return `<span class="sgbar"><i style="width:${Math.max(3,s)}%;background:${c}"></i></span><b style="color:${c}">${s}</b>`; }
+function sgTag(nome,tipo){ return `<span class="sgtag ${tipo==='alta'?'bom':tipo==='baixa'?'ruim':''}">${esc(nome)}</span>`; }
+function sgDestaques(x,v){
+  v=v||S.sg.visao; const out=[];
+  if(x.t&&v!=='fund'){ [...x.t.sinais].filter(s=>s.pontos).sort((a,b)=>Math.abs(b.pontos)-Math.abs(a.pontos)).slice(0,v==='tec'?4:3).forEach(s=>out.push(sgTag(s.nome,s.tipo))); }
+  if(x.f&&v!=='tec'){ const its=[...x.f.itens].sort((a,b)=>Math.abs(b.nota-.5)*b.peso-Math.abs(a.nota-.5)*a.peso).slice(0,v==='fund'?4:2);
+    its.forEach(i=>out.push(sgTag(i.nome+(i.nota>=.5?' ✓':' ✗'),i.nota>=.67?'alta':i.nota<=.33?'baixa':''))); }
+  return out.join(' ');
+}
+function sgLista(){
+  const q=S.sg, v=q.visao; if(!S.sinais) return [];
+  let out=[];
+  for(const r of S.rows){
+    const x=sgDe(r.ticker); const s=sgScore(x,v); if(!ok(s)) continue;
+    if(v==='ambos'&&!(x.f&&x.t)) continue;   // ETFs e índices não têm balanço: aparecem na visão Técnica
+    if(q.mercado&&(r.mercado||'Brasil')!==q.mercado) continue;
+    if(q.setor&&r.setor!==q.setor) continue;
+    if(isFinite(num(q.liq))&&!(ok(r.liquidez)&&r.liquidez>=num(q.liq)*1000)) continue;
+    const [,tom]=sgLado(x,v);
+    if(q.lado==='compra'&&!/^bom/.test(tom)) continue;
+    if(q.lado==='venda'&&!/^ruim|aviso/.test(tom)) continue;
+    if(q.padrao&&!(x.t&&x.t.sinais.some(s=>s.nome===q.padrao))) continue;
+    out.push({r,x,s});
+  }
+  const d=q.lado==='venda'?1:-1;
+  out.sort((a,b)=>d*(a.s-b.s)||((b.r.liquidez||0)-(a.r.liquidez||0)));
+  return out;
+}
+const SG_GRUPOS=[
+  ['Candles (último mês fechado)',['Martelo','Martelo invertido','Engolfo de alta','Estrela cadente','Enforcado','Engolfo de baixa','Doji']],
+  ['Figuras',['OCO invertido confirmado','OCO invertido em formação','Fundo duplo confirmado','Ombro-cabeça-ombro confirmado','Ombro-cabeça-ombro em formação','Topo duplo confirmado']],
+  ['Fibonacci (última perna de 20% ou mais)',['Correção rasa (23,6–38,2%)','Correção na zona de Fibonacci (38,2–61,8%)','Correção profunda (61,8–76,3%)','Devolveu quase toda a alta','Perdeu o fundo da última alta','Perto do topo da última alta','Acima do topo da última alta','Recuperando a queda','Repique na resistência de Fibonacci (50–61,8%)','Recuperou mais de 76,3% da queda','Superou o topo da última queda','Abaixo do fundo da última queda']],
+  ['Tendência e IFR',['Tendência de alta','Sem tendência definida','Tendência de baixa','IFR sobrevendido','IFR sobrecomprado']]
+];
+const SG_LIVRO={'Martelo':'alta','Martelo invertido':'alta','Engolfo de alta':'alta','Estrela cadente':'baixa','Enforcado':'baixa','Engolfo de baixa':'baixa','Doji':'neutro',
+  'OCO invertido confirmado':'alta','OCO invertido em formação':'alta','Fundo duplo confirmado':'alta','Ombro-cabeça-ombro confirmado':'baixa','Ombro-cabeça-ombro em formação':'baixa','Topo duplo confirmado':'baixa',
+  'Correção na zona de Fibonacci (38,2–61,8%)':'alta','Repique na resistência de Fibonacci (50–61,8%)':'baixa','Superou o topo da última queda':'alta','Perdeu o fundo da última alta':'baixa',
+  'Tendência de alta':'alta','Tendência de baixa':'baixa','IFR sobrevendido':'alta','IFR sobrecomprado':'baixa'};
+function sgBacktest(){
+  const B=S.sinais&&S.sinais.backtest; if(!B||!B.base) return '';
+  const pc=v=>fP(v,1), pcs=v=>fP(v,1,true);
+  const fx=['compra','neutro','venda'].filter(k=>B.faixas[k]).map(k=>{ const f=B.faixas[k];
+    return `<tr style="cursor:default"><td class="l"><b>${({compra:'Score técnico 65 ou mais',neutro:'Entre 36 e 64',venda:'35 ou menos'})[k]}</b></td><td>${f.n.toLocaleString('pt-BR')}</td><td class="${f.positivos>B.base.positivos?'up':'down'}">${pc(f.positivos)}</td><td class="${cls(f.media)}">${pcs(f.media)}</td></tr>`; }).join('');
+  const linha=nm=>{ const s=B.sinais[nm]; if(!s) return '';
+    const livro=SG_LIVRO[nm]||'neutro', real=s.peso>=3?'alta':s.peso<=-3?'baixa':'neutro';
+    const bate=livro==='neutro'||real==='neutro'?'':livro===real?'<span class="up">confirmou</span>':'<span class="down">ao contrário</span>';
+    return `<tr style="cursor:default"><td class="l">${esc(nm)}</td><td class="l">${livro==='alta'?'sobe':livro==='baixa'?'cai':'—'}</td><td>${s.n.toLocaleString('pt-BR')}</td><td class="${s.positivos>B.base.positivos?'up':'down'}">${pc(s.positivos)}</td><td class="${cls(s.media)}">${pcs(s.media)}</td><td class="${s.peso>0?'up':s.peso<0?'down':''}">${s.peso>0?'+':''}${s.peso}</td><td class="l">${bate}</td></tr>`; };
+  return `<section class="card"><div class="card-h"><h2>O que o histórico diz</h2><span class="note">${B.base.n.toLocaleString('pt-BR')} meses testados desde ${B.desde.slice(0,4)} · retorno com dividendos nos ${B.horizonte} meses seguintes</span></div>
+   <div class="card-b">
+    <p class="note" style="margin:0 0 10px">O robô volta mês a mês no passado, lê o gráfico só com o que se sabia naquele mês e confere o que aconteceu depois. Na média de todos os meses, <b>${pc(B.base.positivos)}</b> das ações subiram nos ${B.horizonte} meses seguintes (retorno médio de ${pcs(B.base.media)}). Um sinal só ganha peso se mudou essa chance.</p>
+    <div class="tbl-wrap"><table><thead><tr><th class="l">Faixa do score técnico</th><th>Casos</th><th>Subiram</th><th>Retorno médio</th></tr></thead><tbody>${fx}</tbody></table></div>
+    ${SG_GRUPOS.map(([g,nomes])=>{ const ls=nomes.map(linha).join(''); return ls?`<h3 class="sgh">${g}</h3><div class="tbl-wrap"><table><thead><tr><th class="l">Sinal</th><th class="l">Livro diz</th><th>Casos</th><th>Subiram</th><th>Retorno médio</th><th>Peso</th><th class="l">Na prática</th></tr></thead><tbody>${ls}</tbody></table></div>`:''; }).join('')}
+    <p class="note" style="margin:12px 0 0">Candles mensais: cada vela é um mês inteiro. Padrões de reversão (martelo, engolfo) nasceram para gráficos diários e, no mensal destas ações, a tendência pesou mais do que eles. Os pesos são recalculados a cada atualização. Testado também fora da amostra (pesos tirados de 2012–2020 e conferidos em 2020–2026): a faixa de compra continuou bem acima da de venda. Resultado passado não garante o futuro.</p>
+   </div></section>`;
+}
+function vSinais(){
+  const q=S.sg, v=q.visao;
+  const setores=[...new Set(S.rows.map(r=>r.setor).filter(Boolean))].sort();
+  const padroes=SG_GRUPOS.flatMap(([,l])=>l);
+  const head=`<section class="card"><div class="card-h"><h2>Sinais de compra e venda</h2>
+    <div class="seg" role="group" aria-label="Visão">${SG_VISOES.map(([k,l])=>`<button data-sgv="${k}" aria-pressed="${v===k}">${l}</button>`).join('')}</div></div>
+   <div class="card-b" style="padding-bottom:0"><p class="note" style="margin:0">${SG_INFO[v]}</p></div>
+   <div class="card-b filters">
+    <div class="f"><label for="sg-lado">Mostrar</label><select class="inp" id="sg-lado" data-sg="lado">${[['','Todos'],['compra','Lado comprador'],['venda','Lado vendedor']].map(([k,l])=>`<option value="${k}" ${k===q.lado?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="f"><label for="sg-merc">Mercado</label><select class="inp" id="sg-merc" data-sg="mercado"><option value="">Brasil e EUA</option>${['Brasil','EUA'].map(m=>`<option ${m===q.mercado?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="f"><label for="sg-setor">Setor</label><select class="inp" id="sg-setor" data-sg="setor"><option value="">Todos</option>${setores.map(s=>`<option ${s===q.setor?'selected':''} value="${esc(s)}">${esc(s.replace(/^Emp\. Adm\. Part\. - /,''))}</option>`).join('')}</select></div>
+    <div class="f"><label for="sg-pad">Padrão no gráfico</label><select class="inp" id="sg-pad" data-sg="padrao"><option value="">Qualquer</option>${padroes.map(p=>`<option ${p===q.padrao?'selected':''}>${esc(p)}</option>`).join('')}</select></div>
+    <div class="f"><label for="sg-liq">Liquidez mín. (mil/dia)</label><input class="inp" id="sg-liq" data-sg="liq" value="${esc(q.liq)}" placeholder="ex.: 1000"></div>
+    <div class="f"><label for="sg-top">Quantas</label><select class="inp" id="sg-top" data-sg="top">${['20','50','100','Todas'].map(x=>`<option ${x===q.top?'selected':''}>${x}</option>`).join('')}</select></div>
+   </div></section>`;
+  if(S.sinais===undefined) return head+`<div class="card"><div class="empty">Carregando os sinais…</div></div>`;
+  if(!S.sinais) return head+`<div class="card"><div class="empty">Os sinais aparecem depois da próxima atualização automática do robô.</div></div>`;
+  const list=sgLista(); const show=q.top==='Todas'?list:list.slice(0,+q.top);
+  const tab=`<section class="card"><div class="card-h"><h2>${q.lado==='venda'?'Piores notas primeiro':'Melhores notas primeiro'}</h2><span class="note">${list.length} ativo(s) · clique numa linha para ver o detalhe</span></div>
+   <div class="tbl-wrap tbl-scroll"><table class="sgtbl"><thead><tr><th class="l">#</th><th class="l">Ação</th><th class="l">Score</th>${v==='ambos'?'<th>Fund.</th><th>Técn.</th>':v==='fund'?'<th>Qualid.</th><th>Preço</th>':'<th>IFR</th>'}<th class="l">Leitura</th><th class="l">O que pesou</th></tr></thead>
+   <tbody>${show.map(({r,x,s},i)=>{ const [lab,tom]=sgLado(x,v);
+     const extra=v==='ambos'?`<td>${x.f?x.f.score:'—'}</td><td>${x.t?x.t.score:'—'}</td>`:v==='fund'?`<td>${x.f&&ok(x.f.qualidade)?x.f.qualidade:'—'}</td><td>${x.f&&ok(x.f.preco)?x.f.preco:'—'}</td>`:`<td>${x.t&&ok(x.t.ifr)?fN(x.t.ifr,0):'—'}</td>`;
+     return `<tr data-open="${esc(r.ticker)}"><td class="l rk-n">${i+1}</td><td class="l"><span class="tk">${esc(r.ticker)}</span>${r.moeda==='USD'?'<span class="chip" style="margin-left:6px;padding:0 6px">EUA</span>':''}<div class="co">${esc((r.setor||'').replace(/^Emp\. Adm\. Part\. - /,''))}</div></td>
+      <td class="l">${sgBarra(s)}</td>${extra}<td class="l"><span class="sglado ${tom}">${esc(lab)}</span></td><td class="l sgwrap">${sgDestaques(x,v)}</td></tr>`; }).join('')||`<tr><td colspan="7" class="l muted">Nada com esses filtros.</td></tr>`}</tbody></table></div></section>`;
+  return head+tab+sgBacktest()+`<p class="note">Material de estudo, não é recomendação de compra ou venda. O score serve para escolher o que olhar com mais cuidado: confira os balanços, os fatos relevantes e o gráfico antes de qualquer decisão.</p>`;
+}
+// card do score na ficha da ação
+function sgFicha(r){
+  if(S.sinais===undefined) return `<section class="card" id="sg-ficha"><div class="card-h"><h2>Score</h2></div><div class="card-b"><span class="muted">Carregando…</span></div></section>`;
+  const x=sgDe(r.ticker); if(!x) return '';
+  const v=S.sg.visao;
+  const nota=i=>{ const p=Math.round(i.nota*100); return `<span class="sgbar sm"><i style="width:${Math.max(3,p)}%;background:${p>=67?'var(--up)':p<=33?'var(--down)':'var(--muted)'}"></i></span>`; };
+  const F=x.f?`<div class="sgcol"><h3>Fundamentalista <b>${x.f.score}</b><small>qualidade ${x.f.qualidade??'—'} · preço ${x.f.preco??'—'} · comparado com o ${x.f.base==='setor'?'setor':'mercado'}</small></h3>
+     ${x.f.itens.map(i=>`<div class="sgit"><span>${esc(i.nome)}<small>${esc(i.txt)}</small></span>${nota(i)}</div>`).join('')}
+     <p class="note" style="margin:6px 0 0">A barra mostra em que posição a ação fica entre os pares: cheia é a melhor do grupo, vazia a pior.</p></div>`:'';
+  const T=x.t?`<div class="sgcol"><h3>Técnica <b>${x.t.score}</b><small>gráfico mensal · começa em 50 e soma os pesos abaixo</small></h3>
+     ${x.t.sinais.map(s=>`<div class="sgit"><span>${sgTag(s.nome,s.tipo)}<small>${esc(s.txt)}${s.hist?` · no histórico: ${fP(s.hist.positivos,0)} subiram em 6 meses`:''}${s.livro&&s.livro!=='neutro'&&s.tipo!=='neutro'&&s.livro!==s.tipo?' (o livro diz o contrário)':''}</small></span><b class="${s.pontos>0?'up':s.pontos<0?'down':'muted'}">${s.pontos>0?'+':''}${s.pontos}</b></div>`).join('')}
+     ${x.t.fib?`<button class="btn" data-fibscore="1" style="margin-top:8px">Ver essa perna no Fibonacci</button>`:''}</div>`:'';
+  const [lab,tom]=sgLado(x,'ambos');
+  return `<section class="card" id="sg-ficha"><div class="card-h"><h2>Score <b style="font-size:20px;margin-left:6px">${x.total}</b></h2><span class="sglado ${tom}">${esc(lab)}</span></div>
+   <div class="card-b sggrid">${F}${T}</div><p class="note" style="margin:0;padding:0 16px 14px">Material de estudo, não é recomendação. Explicação de cada sinal e o resultado do teste no histórico na aba <a href="#" data-tab="sinais" style="color:var(--accent)">Sinais</a>.</p></section>`;
+}
+
 // ===================== ficha da ação =====================
 const IND=[
   ['Valuation',[['pl','P/L','Preço ÷ lucro por ação dos últimos 12 meses','x'],['pvp','P/VP','Preço ÷ patrimônio por ação','x'],['psr','P/Receita','Valor de mercado ÷ receita 12m','x'],['ev_ebitda','EV/EBITDA','(Valor de mercado + dívida líquida) ÷ EBITDA 12m','x'],['ev_ebit','EV/EBIT','(Valor de mercado + dívida líquida) ÷ EBIT 12m','x'],['lpa','LPA','Lucro 12m ÷ número de ações','r'],['vpa','VPA','Patrimônio ÷ número de ações','r']]],
@@ -494,6 +641,7 @@ function vAcao(){
     <div><div class="px">${ok(r.preco)?money(r.preco,curRow(r)):'sem cotação'}</div>
      <div class="mono" style="text-align:right;margin-top:6px"><span class="${cls(r.var_dia)}">${ok(r.var_dia)?fP(r.var_dia,2,true)+' no dia':''}</span> <span class="${cls(r.var_12m)}">${ok(r.var_12m)?' · '+fP(r.var_12m,1,true)+' em 12m':''}</span></div></div></div>
   </div></section>
+  ${sgFicha(r)}
   <div class="two">
    <section class="card"><div class="card-h"><h2>Histórico</h2>
      <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -1004,6 +1152,8 @@ function openTk(t){ S.tk=t; $('#q').value=''; $('#sugs').hidden=true; try{ histo
 // ===================== eventos =====================
 document.addEventListener('click',e=>{
   const rb=e.target.closest('[data-rkn]'); if(rb){ S.rk.n=rb.dataset.rkn; render(); return; }
+  const sv=e.target.closest('[data-sgv]'); if(sv){ S.sg.visao=sv.dataset.sgv; render(); return; }
+  const fs=e.target.closest('[data-fibscore]'); if(fs){ const x=sgDe(S.tk); const f=x&&x.t&&x.t.fib; if(f){ S.modo='preco'; S.ferr='fibo'; S.fib[S.tk+'|preco']={a:f.b,b:f.a}; const ini=+f.de.slice(0,4), anos=new Date().getFullYear()-ini+1; S.range=anos<=1?'1':anos<=5?'5':anos<=10?'10':anos<=20?'20':'max'; render(); setTimeout(()=>{ const c=$('#ch-hist'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); },50); } return; }
   const fb=e.target.closest('[data-ferr]'); if(fb){ S.ferr=fb.dataset.ferr; render(); return; }
   const gb=e.target.closest('[data-graf]'); if(gb){ S.graf=gb.dataset.graf; try{ localStorage.setItem('painel-graf',S.graf); }catch{} render(); return; }
   const b=e.target.closest('[data-smodo],[data-add],[data-rm],[data-iguais],[data-ha],[data-todas],[data-tab],[data-open],[data-sort],[data-preset],[data-range],[data-modo],[data-simular],[data-act]');
@@ -1028,6 +1178,7 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.f){ S.f[el.dataset.f]= el.type==='checkbox'?el.checked:el.value; render(); }
+  if(el.dataset.sg){ S.sg[el.dataset.sg]=el.value; render(); }
   if(el.dataset.rk){ const k=el.dataset.rk; S.rk[k]= el.type==='checkbox'?el.checked:(k==='asc'?!!el.value:el.value); render(); }
   if(/^rf-/.test(el.id)){ lerRF(); render(); return; }
   if(['s-tk','s-mes','s-ano','s-re','s-real','s-fx','s-opc','s-ir'].includes(el.id)||/^c-(tk|p)-/.test(el.id)) readSim();
