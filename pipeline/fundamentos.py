@@ -49,7 +49,8 @@ def load_doc(zip_path: Path) -> dict[str, pd.DataFrame]:
     """Lê do zip (DFP ou ITR) só as demonstrações consolidadas usadas no cálculo."""
     out = {}
     with zipfile.ZipFile(zip_path) as z:
-        for key in ["DRE_con", "BPA_con", "BPP_con", "DVA_con", "composicao_capital"]:
+        # _ind = demonstrações individuais: usadas quando a empresa não tem controladas e o consolidado vem vazio ou zerado
+        for key in ["DRE_con", "BPA_con", "BPP_con", "DVA_con", "DRE_ind", "BPA_ind", "BPP_ind", "DVA_ind", "composicao_capital"]:
             n = _member(z, key)
             if n:
                 df = _read(z, n)
@@ -98,7 +99,7 @@ def load_tickers(fca_zips) -> pd.DataFrame:
 
 # ---------------------------------------------------------------- helpers de conta
 LUCRO_CONTROLADORA = re.compile(r"Atribu[íi]do a S[óo]cios da Empresa Controladora", re.I)
-LUCRO_TOTAL = re.compile(r"Lucro/Preju[íi]zo Consolidado do Per[íi]odo|Lucro ou Preju[íi]zo L[íi]quido", re.I)
+LUCRO_TOTAL = re.compile(r"Lucro/Preju[íi]zo Consolidado do Per[íi]odo|Lucro/Preju[íi]zo do Per[íi]odo|Lucro ou Preju[íi]zo L[íi]quido", re.I)
 EBIT = re.compile(r"Resultado Antes do Resultado Financeiro", re.I)
 DA = re.compile(r"Deprecia[çc][ãa]o, Amortiza[çc][ãa]o", re.I)
 PL = re.compile(r"^Patrim[ôo]nio L[íi]quido", re.I)
@@ -114,10 +115,12 @@ def _rows(df, cnpj, dt_refer, ordem="ÚLTIMO"):
 
 
 def _ytd(x):
-    """Para DRE/DVA de ITR: só as linhas do acumulado do ano (início em 01/01)."""
-    if "DT_INI_EXERC" not in x:
+    """Para DRE/DVA de ITR: só as linhas do acumulado do exercício (o período que começa mais cedo).
+    Funciona também para quem tem ano fiscal diferente do calendário (ex.: BrasilAgro, de julho a junho)."""
+    if "DT_INI_EXERC" not in x or not len(x):
         return x
-    return x[x["DT_INI_EXERC"].str.endswith("-01-01")]
+    ini = x["DT_INI_EXERC"].dropna()
+    return x[x["DT_INI_EXERC"] == ini.min()] if len(ini) else x
 
 
 def _first(x, pattern, prefix=None, depth=None):
@@ -146,8 +149,10 @@ def _code(x, code):
 
 def _flows(dre, dva):
     lucro = _first(dre, LUCRO_CONTROLADORA)
-    if lucro is None:
-        lucro = _first(dre, LUCRO_TOTAL, prefix="3.", depth=1)
+    total = _first(dre, LUCRO_TOTAL, prefix="3.", depth=1)
+    # muitas empresas preenchem a linha "atribuído aos controladores" com zero e põem o lucro só no total
+    if lucro is None or (lucro == 0 and total):
+        lucro = total
     receita = _code(dre, "3.01")
     bruto = _code(dre, "3.03")
     ebit = _first(dre, EBIT, depth=1)
@@ -181,41 +186,56 @@ def compute(dfp: dict, itr: dict, tickers: pd.DataFrame) -> pd.DataFrame:
             cache[k] = {c: g for c, g in df.groupby("CNPJ_CIA")} if df is not None else {}
             empty[k] = df.iloc[0:0] if df is not None else pd.DataFrame(columns=["CNPJ_CIA", "DT_REFER", "ORDEM_EXERC", "DS_CONTA", "CD_CONTA", "VL"])
         return cache[k].get(cnpj, empty[k])
-    cnpjs = sorted(set(dfp["DRE_con"]["CNPJ_CIA"]) | set(itr["DRE_con"]["CNPJ_CIA"]))
+    def tipo(doc, cnpj):
+        """'con' quando o consolidado tem números; senão 'ind' (empresa sem controladas)."""
+        x = S(doc, "DRE_con", cnpj)
+        if len(x) and x["VL"].abs().sum() > 0:
+            return "con"
+        y = S(doc, "DRE_ind", cnpj) if doc.get("DRE_ind") is not None else x
+        return "ind" if len(y) and y["VL"].abs().sum() > 0 else "con"
+    cnpjs = sorted(set(dfp["DRE_con"]["CNPJ_CIA"]) | set(itr["DRE_con"]["CNPJ_CIA"])
+                   | set(dfp.get("DRE_ind", dfp["DRE_con"])["CNPJ_CIA"]) | set(itr.get("DRE_ind", itr["DRE_con"])["CNPJ_CIA"]))
     for cnpj in cnpjs:
         r = {"cnpj": cnpj}
+        td, ti = tipo(dfp, cnpj), tipo(itr, cnpj)
         # --- datas
-        d_dfp = S(dfp, "DRE_con", cnpj).loc[S(dfp, "DRE_con", cnpj)["CNPJ_CIA"] == cnpj, "DT_REFER"].max()
-        d_itr = S(itr, "DRE_con", cnpj).loc[S(itr, "DRE_con", cnpj)["CNPJ_CIA"] == cnpj, "DT_REFER"].max()
+        d_dfp = S(dfp, "DRE_" + td, cnpj)["DT_REFER"].max()
+        d_itr = S(itr, "DRE_" + ti, cnpj)["DT_REFER"].max()
         if not isinstance(d_dfp, str):
             d_dfp = None
         if not isinstance(d_itr, str):
             d_itr = None
         if d_itr and d_dfp and d_itr <= d_dfp:
             d_itr = None
-        # 12 meses só fecham se o ITR for do ano seguinte ao último balanço anual
-        ttm_ok = bool(d_itr and d_dfp and int(d_itr[:4]) == int(d_dfp[:4]) + 1)
+        # 12 meses só fecham se o acumulado do ITR começar no dia seguinte ao fim do último balanço anual
+        # (vale para ano fiscal de janeiro a dezembro e para quem fecha o ano em outro mês)
+        ttm_ok = False
+        if d_itr and d_dfp:
+            ini = _ytd(_rows(S(itr, "DRE_" + ti, cnpj), cnpj, d_itr)).get("DT_INI_EXERC")
+            ini = ini.dropna().min() if ini is not None and len(ini) else None
+            prox = (pd.Timestamp(d_dfp) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+            ttm_ok = ini == prox
         # --- fluxos 12m
-        fa = _flows(_rows(S(dfp, "DRE_con", cnpj), cnpj, d_dfp), _rows(S(dfp, "DVA_con", cnpj), cnpj, d_dfp)) if d_dfp else {}
+        fa = _flows(_rows(S(dfp, "DRE_" + td, cnpj), cnpj, d_dfp), _rows(S(dfp, "DVA_" + td, cnpj), cnpj, d_dfp)) if d_dfp else {}
         if d_itr:
-            fb = _flows(_ytd(_rows(S(itr, "DRE_con", cnpj), cnpj, d_itr)), _ytd(_rows(S(itr, "DVA_con", cnpj), cnpj, d_itr)))
-            fc = _flows(_ytd(_rows(S(itr, "DRE_con", cnpj), cnpj, d_itr, "PENÚLTIMO")), _ytd(_rows(S(itr, "DVA_con", cnpj), cnpj, d_itr, "PENÚLTIMO")))
+            fb = _flows(_ytd(_rows(S(itr, "DRE_" + ti, cnpj), cnpj, d_itr)), _ytd(_rows(S(itr, "DVA_" + ti, cnpj), cnpj, d_itr)))
+            fc = _flows(_ytd(_rows(S(itr, "DRE_" + ti, cnpj), cnpj, d_itr, "PENÚLTIMO")), _ytd(_rows(S(itr, "DVA_" + ti, cnpj), cnpj, d_itr, "PENÚLTIMO")))
         else:
             fb, fc = {}, {}
         for k in ["lucro", "receita", "bruto", "ebit", "da", "proventos"]:
             r[k + "_12m"] = _ttm(fa.get(k), fb.get(k), fc.get(k)) if ttm_ok else fa.get(k)
         # --- estoque (balanço mais recente)
-        src, dt = (itr, d_itr) if d_itr else (dfp, d_dfp)
+        src, dt, tp = (itr, d_itr, ti) if d_itr else (dfp, d_dfp, td)
         r["data_balanco"] = dt
         if not dt:
             continue
-        bpa = _rows(S(src, "BPA_con", cnpj), cnpj, dt)
-        bpp = _rows(S(src, "BPP_con", cnpj), cnpj, dt)
+        bpa = _rows(S(src, "BPA_" + tp, cnpj), cnpj, dt)
+        bpp = _rows(S(src, "BPP_" + tp, cnpj), cnpj, dt)
         pl_tot = _first(bpp, PL, prefix="2.", depth=1)
         nc = _first(bpp, NAO_CONTROL, prefix="2.", depth=2)
         r["patrimonio"] = (pl_tot - (nc or 0)) if pl_tot is not None else None
         r["ativo"] = _code(bpa, "1")
-        r["banco"] = bool(_rows(S(src, "DRE_con", cnpj), cnpj, dt)["DS_CONTA"].str.contains("Intermedia", na=False).any())
+        r["banco"] = bool(_rows(S(src, "DRE_" + tp, cnpj), cnpj, dt)["DS_CONTA"].str.contains("Intermedia", na=False).any())
         if not r["banco"]:
             r["ativo_circ"] = _code(bpa, "1.01")
             r["passivo_circ"] = _code(bpp, "2.01")

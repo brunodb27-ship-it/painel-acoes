@@ -20,7 +20,7 @@ import fundamentos as F
 
 PRIMEIRO_ANO = 2010
 JANELAS = [5, 10, 15, 20]
-VERSAO = 2  # aumente quando mudar o cálculo dos anos, para refazer o histórico inteiro
+VERSAO = 3  # aumente quando mudar o cálculo dos anos, para refazer o histórico inteiro (3: lucro do consolidado e demonstrações individuais)
 CAMPOS_ANO = ["receita", "ebit", "lucro", "patrimonio", "proventos", "acoes_on", "acoes_pn", "banco"]
 
 
@@ -51,18 +51,29 @@ def ano_dfp(zip_path: Path, tickers: pd.DataFrame) -> dict:
     return out
 
 
-def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.DataFrame, log, apagar_zip: bool = True) -> dict:
-    """Completa o anual.json. baixar_dfp(ano) devolve o caminho do zip ou None."""
+def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.DataFrame, log, apagar_zip: bool = True,
+                    max_refazer: int = 6) -> dict:
+    """Completa o anual.json. baixar_dfp(ano) devolve o caminho do zip ou None.
+    Quando o cálculo muda (VERSAO), os anos antigos são refeitos aos poucos (max_refazer por rodada),
+    mantendo os números antigos até chegar a vez de cada ano, para a rodada não estourar o tempo."""
     try:
         hist = json.loads(arquivo.read_text())
     except Exception:  # noqa: BLE001
         hist = {"anos": [], "dados": {}}
-    if hist.get("versao") != VERSAO:  # mudou a forma de calcular: refaz todos os anos
-        hist = {"anos": [], "dados": {}}
+    if hist.get("versao") != VERSAO:
+        hist["pendentes"] = sorted(set(hist.get("pendentes", [])) | set(hist.get("anos", [])))
+        hist["versao"] = VERSAO
     feitos = set(hist.get("anos", []))
+    pendentes = set(hist.get("pendentes", []))
+    refeitos = 0
     for ano in range(PRIMEIRO_ANO, ultimo_ano + 1):
-        if ano in feitos and ano < ultimo_ano - 1:
+        recente = ano >= ultimo_ano - 1
+        if ano in feitos and not recente and ano not in pendentes:
             continue
+        if ano in feitos and not recente and ano in pendentes:
+            if refeitos >= max_refazer:
+                continue
+            refeitos += 1
         z = baixar_dfp(ano)
         if not z:
             log(f"histórico: DFP {ano} não encontrado")
@@ -75,9 +86,12 @@ def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.Data
         if len(res) < 50 and ano < ultimo_ano:
             log(f"histórico: DFP {ano} veio com só {len(res)} empresas; ignorado")
             continue
+        for regs in hist["dados"].values():   # tira o ano antigo antes de gravar o refeito
+            regs.pop(str(ano), None)
         for cnpj, v in res.items():
             hist["dados"].setdefault(cnpj, {})[str(ano)] = v
         feitos.add(ano)
+        pendentes.discard(ano)
         log(f"histórico: DFP {ano} ok ({len(res)} empresas)")
         try:
             if apagar_zip:
@@ -85,7 +99,9 @@ def atualizar_anual(arquivo: Path, ultimo_ano: int, baixar_dfp, tickers: pd.Data
         except Exception:  # noqa: BLE001
             pass
     hist["anos"] = sorted(feitos)
-    hist["versao"] = VERSAO
+    hist["pendentes"] = sorted(pendentes)
+    if pendentes:
+        log("histórico: anos que ainda serão refeitos nas próximas rodadas:", sorted(pendentes))
     arquivo.write_text(json.dumps(hist, ensure_ascii=False, separators=(",", ":")))
     return hist
 
