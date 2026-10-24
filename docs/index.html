@@ -130,6 +130,12 @@ th.hl{color:var(--accent)}
 .info:hover::after,.info:focus-visible::after,.info.aberto::after{content:attr(data-tip);position:absolute;z-index:30;top:calc(100% + 8px);left:-8px;width:min(340px,82vw);white-space:pre-line;text-align:left;background:var(--panel);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.35);color:var(--fg);padding:10px 12px;border-radius:9px;font:400 12.5px/1.5 var(--f-body)}
 @media (max-width:760px){ .info:hover::after,.info:focus-visible::after,.info.aberto::after{position:fixed;left:12px;right:12px;top:auto;bottom:12px;width:auto} }
 .padit{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.qbtn{border:1px solid var(--line);background:var(--panel2);border-radius:99px;padding:2px 9px;font-size:11.5px;cursor:pointer;color:var(--muted);margin-left:4px}
+.qbtn.ruim{color:var(--down);border-color:color-mix(in srgb,var(--down) 50%,transparent)} .qbtn.aviso{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)} .qbtn.bom{color:var(--up)}
+.banner.qban{margin:0;display:grid;gap:4px;border-color:var(--down)}
+.libbar{display:inline-block;vertical-align:middle;width:140px;height:8px;border-radius:99px;background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line);margin-right:8px;overflow:hidden;position:relative}
+.libbar::after{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;border-left:1px dashed var(--muted)}
+.libbar i{display:block;height:100%}
 .regua{padding:4px 0 2px}
 .regua .trilho{position:relative;height:10px;border-radius:99px;margin:30px 0 6px;background:linear-gradient(90deg,var(--down-soft) 0 35%,var(--panel2) 35% 65%,var(--up-soft) 65% 100%);box-shadow:inset 0 0 0 1px var(--line)}
 .regua .trilho::before,.regua .trilho::after{content:"";position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--line)}
@@ -241,9 +247,10 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <button role="tab" data-tab="ranking">Ranking</button>
     <button role="tab" data-tab="sinais">Sinais</button>
     <button role="tab" data-tab="simulador">Simulador</button>
+    <button role="tab" data-tab="liberdade">Liberdade</button>
   </nav>
   <button class="btn" data-todas="1">Todas as ações</button>
-  <span class="stamp" id="stamp">carregando…</span>
+  <span class="stamp"><span id="stamp">carregando…</span> <button type="button" class="qbtn" id="qbtn" hidden></button></span>
   <button class="btn tema" id="tema" type="button" aria-label="Trocar tema" title="Trocar entre claro, escuro e o tema do sistema"></button>
 </div></header>
 <main id="app"><div class="empty">Carregando dados…</div></main>
@@ -251,7 +258,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script>
 // ===================== estado =====================
-const S = { hindK:'roe', sg:{visao:'ambos',lado:'',mercado:'',setor:'',padrao:'',liq:'1000',top:'50'}, tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
+const S = { lib:{patrimonio:8000000,modo:'taxa',taxa:4,saque:26667,acoes:50,janela:20,ret:null,inf:null,ir:0,prazo:40,corrige:true,fonte:''}, hindK:'roe', sg:{visao:'ambos',lado:'',mercado:'',setor:'',padrao:'',liq:'1000',top:'50'}, tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
   range:'10', tf:'m', rangeTf:{d:'6',w:'24'}, dia:{}, modo:'preco', graf:'linha', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
@@ -336,11 +343,12 @@ async function loadHist(t){
 function setTab(t){ S.tab=t; document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t)); render(); }
 function render(){
   Object.values(S.charts).forEach(c=>c&&c.destroy()); S.charts={};
-  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais}[S.tab]; $('#app').innerHTML=v(); after();
+  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais,liberdade:vLib}[S.tab]; $('#app').innerHTML=(S.qualAberto?vQual():'')+v(); after();
 }
 function after(){
   if(S.tab==='acao') drawAcao();
   if(S.tab==='simulador') runSim();
+  if(S.tab==='liberdade') runLib();
   if(S.tab==='ranking'&&!S.rank&&!S.rankErr) loadRank();
   if(S.sinais===undefined&&!S._sgLoading){ S._sgLoading=true; loadSinais().then(()=>{ if(['sinais','acao','buscador'].includes(S.tab)) render(); }); }
 }
@@ -773,6 +781,7 @@ function vAcao(){
      <div class="mono" style="text-align:right;margin-top:6px"><span class="${cls(r.var_dia)}">${ok(r.var_dia)?fP(r.var_dia,2,true)+' no dia':''}</span> <span class="${cls(r.var_12m)}">${ok(r.var_12m)?' · '+fP(r.var_12m,1,true)+' em 12m':''}</span></div></div></div>
   </div></section>
   ${!ok(r.preco)?`<div class="banner">Sem cotação no Yahoo para ${esc(r.ticker)}. Normalmente é porque o código mudou (fusão, troca de nome), a ação saiu da bolsa ou quase não negocia. Os números do balanço continuam valendo, mas P/L, P/VP, dividend yield e o gráfico dependem do preço.</div>`:''}
+  ${qualFicha(r)}
   ${sgFicha(r)}
   <div class="two">
    <section class="card"><div class="card-h"><h2>Histórico</h2>
@@ -1322,13 +1331,15 @@ function sugs(q){
   el.innerHTML=m.map((r,i)=>`<button data-open="${esc(r.ticker)}" class="${i===sugIdx?'on':''}"><b>${esc(r.ticker)}</b><span class="muted">${esc(r.empresa)}</span></button>`).join('')||'<div class="empty">Nada encontrado.</div>';
   el.hidden=false;
 }
-function openTk(t){ S.tk=t; $('#q').value=''; $('#sugs').hidden=true; try{ history.replaceState(null,'','#'+t); }catch{} setTab('acao'); window.scrollTo({top:0}); }
+function openTk(t){ S.tk=t; S.qualAberto=false; $('#q').value=''; $('#sugs').hidden=true; try{ history.replaceState(null,'','#'+t); }catch{} setTab('acao'); window.scrollTo({top:0}); }
 
 // ===================== eventos =====================
 document.addEventListener('click',e=>{
   const rb=e.target.closest('[data-rkn]'); if(rb){ S.rk.n=rb.dataset.rkn; render(); return; }
   const hb=e.target.closest('[data-hind]'); if(hb){ S.hindK=hb.dataset.hind; document.querySelectorAll('[data-hind]').forEach(b=>b.setAttribute('aria-pressed',b===hb)); const r=byTk(S.tk); if(r) drawHind(r); return; }
   const ib=e.target.closest('.info'); if(ib){ e.preventDefault(); ib.classList.toggle('aberto'); return; }
+  if(e.target.closest('#qbtn')){ S.qualAberto=!S.qualAberto; render(); if(S.qualAberto) window.scrollTo({top:0,behavior:'smooth'}); return; }
+  if(e.target.closest('[data-qual="fechar"]')){ S.qualAberto=false; render(); return; }
   const sv=e.target.closest('[data-sgv]'); if(sv){ S.sg.visao=sv.dataset.sgv; render(); return; }
   const tfb=e.target.closest('[data-tf]'); if(tfb){ S.tf=tfb.dataset.tf; try{ localStorage.setItem('painel-tf',S.tf); }catch{} render(); return; }
   const fs=e.target.closest('[data-fibscore]'); if(fs){ const x=sgDe(S.tk); const f=x&&x.t&&x.t.fib; if(f){ S.tf='m'; S.modo='preco'; S.ferr='fibo'; S.fib[S.tk+'|preco']={a:f.b,b:f.a}; const ini=+f.de.slice(0,4), anos=new Date().getFullYear()-ini+1; S.range=anos<=1?'1':anos<=5?'5':anos<=10?'10':anos<=20?'20':'max'; render(); setTimeout(()=>{ const c=$('#ch-hist'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); },50); } return; }
@@ -1352,6 +1363,7 @@ document.addEventListener('click',e=>{
   else if(d.simular){ S.sim.tk=d.simular; S.sim.modo='uma'; setTab('simulador'); }
   else if(d.act==='sim') readSim();
   else if(d.act==='rf'){ lerRF(); render(); }
+  else if(d.act==='lib'){ lerLib(); render(); }
 });
 document.addEventListener('change',e=>{
   const el=e.target;
@@ -1359,6 +1371,7 @@ document.addEventListener('change',e=>{
   if(el.dataset.sg){ S.sg[el.dataset.sg]=el.value; render(); }
   if(el.dataset.rk){ const k=el.dataset.rk; S.rk[k]= el.type==='checkbox'?el.checked:(k==='asc'?!!el.value:el.value); render(); }
   if(/^rf-/.test(el.id)){ lerRF(); render(); return; }
+  if(/^lb-/.test(el.id)){ lerLib(); render(); return; }
   if(['s-tk','s-mes','s-ano','s-re','s-real','s-fx','s-opc','s-ir'].includes(el.id)||/^c-(tk|p)-/.test(el.id)) readSim();
 });
 document.addEventListener('keydown',e=>{
@@ -1371,11 +1384,171 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key==='Enter'&&e.target.closest('.filters')) e.target.blur();
   if(e.key==='Enter'&&e.target.closest('.rf-form')){ lerRF(); render(); return; }
+  if(e.key==='Enter'&&e.target.closest('.lib-form')){ lerLib(); render(); return; }
   if(e.key==='Enter'&&e.target.closest('.sim-form')) readSim();
 });
 window.addEventListener('hashchange',()=>{ const h=(location.hash||'').slice(1).toUpperCase(); if(h&&byTk(h)&&h!==S.tk){ S.tk=h; setTab('acao'); } });
 document.addEventListener('input',e=>{ if(e.target.id==='q'){ sugIdx=-1; sugs(e.target.value); } });
 
+
+// ===================== liberdade financeira: viver de renda =====================
+// número em reais aceitando "8.000.000", "8000000", "8.000.000,50" ou "8000000.5"
+function numBR(s){ s=String(s??'').trim().replace(/[R$\s]/g,''); if(!s) return NaN;
+  if(/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  return num(s); }
+// série mensal histórica da carteira: % em ações (Ibovespa, já com dividendos) + resto em CDI; IPCA para a inflação
+function libHist(){
+  const M=S.macro; if(!M||!M.ibov||!M.cdi||!M.ipca) return null;
+  const ks=Object.keys(M.ipca).filter(k=>k>='2000-02'&&M.cdi[k]!=null&&M.ibov[k]!=null).sort();
+  const prev=k=>{ let [y,m]=k.split('-').map(Number); m--; if(!m){ m=12; y--; } return y+'-'+String(m).padStart(2,'0'); };
+  return ks.filter(k=>M.ibov[prev(k)]!=null).map(k=>({m:k,acao:M.ibov[k]/M.ibov[prev(k)]-1,rf:M.cdi[k]/100,inf:M.ipca[k]/100}));
+}
+function libMedia(H,mix,anos){
+  const x=H.slice(-anos*12); if(x.length<anos*12*0.9) return null;
+  let v=1,p=1; for(const r of x){ v*=1+mix*r.acao+(1-mix)*r.rf; p*=1+r.inf; }
+  const n=x.length/12; return {ret:Math.pow(v,1/n)-1, inf:Math.pow(p,1/n)-1, de:x[0].m, ate:x.at(-1).m};
+}
+// projeção com retorno médio constante (mês a mês)
+function libProjeta(L,ret,inf,taxaOverride){
+  const meses=L.prazo*12, rm=Math.pow(1+ret*(1-L.ir/100),1/12)-1, im=Math.pow(1+inf,1/12)-1;
+  let P=L.patrimonio, W=taxaOverride!=null?L.patrimonio*taxaOverride/12:(L.modo==='taxa'?L.patrimonio*L.taxa/100/12:L.saque), defl=1, acabou=null, sacado=0;
+  const pts=[{ano:0,nom:P,real:P,saque:W}];
+  for(let k=0;k<meses;k++){
+    if(k>0&&k%12===0&&L.corrige) W*=Math.pow(1+inf,1);
+    const s=Math.min(W,Math.max(P,0)); P-=s; sacado+=s/defl;
+    if(P<=0&&acabou==null){ acabou=k; P=0; }
+    P*=1+rm; defl*=1+im;
+    if((k+1)%12===0) pts.push({ano:(k+1)/12,nom:P,real:P/defl,saque:W});
+  }
+  return {pts,acabou,final:P,finalReal:P/defl,W0:pts[0].saque,sacadoReal:sacado};
+}
+// teste com a história real: começa em cada janeiro desde 2000 e vai até o prazo ou até hoje
+function libHistorico(L,H,mix){
+  const out=[];
+  for(let i=0;i<H.length;i++){
+    if(!H[i].m.endsWith('-01')) continue;
+    let P=L.patrimonio, W=L.modo==='taxa'?L.patrimonio*L.taxa/100/12:L.saque, defl=1, acabou=null, minReal=1, n=0, inf12=1;
+    const fim=Math.min(H.length,i+L.prazo*12);
+    for(let j=i;j<fim;j++){
+      const r=H[j]; if(n>0&&n%12===0&&L.corrige){ W*=inf12; inf12=1; }
+      P-=Math.min(W,P); if(P<=0&&acabou==null){ acabou=n; P=0; }
+      let g=mix*r.acao+(1-mix)*r.rf; if(g>0) g*=1-L.ir/100;
+      P*=1+g; defl*=1+r.inf; inf12*=1+r.inf; n++;
+      minReal=Math.min(minReal,P/defl/L.patrimonio);
+    }
+    out.push({ini:H[i].m.slice(0,4),anos:n/12,finalReal:P/defl/L.patrimonio,minReal,acabou,completo:n>=L.prazo*12});
+  }
+  return out;
+}
+function libPadroes(){
+  const L=S.lib; if(L.ret!=null||!S.macro) return;
+  const H=libHist(); const m=H&&libMedia(H,L.acoes/100,L.janela);
+  L.ret=m?+(m.ret*100).toFixed(2):10; L.inf=m?+(m.inf*100).toFixed(2):4.5; L.fonte=m?`média de ${m.de.slice(5)}/${m.de.slice(0,4)} a ${m.ate.slice(5)}/${m.ate.slice(0,4)}`:'estimativa';
+}
+function vLib(){
+  if(!S.macro) return `<div class="card"><div class="empty">Carregando o histórico de CDI, IPCA e Ibovespa…</div></div>`;
+  libPadroes(); const L=S.lib;
+  return `<section class="card"><div class="card-h"><h2>Liberdade financeira · viver de renda${info('Simula quanto você pode sacar todo mês de um patrimônio investido, e por quanto tempo o dinheiro dura.\n\nRegra dos 4%: no primeiro ano você saca 4% do patrimônio e, nos anos seguintes, o mesmo valor corrigido pela inflação. Ela nasceu de estudos com ações e títulos americanos, em que essa retirada aguentou 30 anos em quase todos os períodos da história.\n\nAqui a conta usa a sua carteira: parte em ações (Ibovespa, com dividendos) e parte em renda fixa (CDI), com o retorno médio dos últimos anos ou o que você digitar. Embaixo, a mesma regra é testada com a história real desde 2000.')}</h2></div>
+   <div class="card-b sim-form lib-form">
+    <div class="f"><label for="lb-pat">Patrimônio (R$)</label><input class="inp" id="lb-pat" inputmode="decimal" value="${fN(L.patrimonio,0)}"></div>
+    <div class="f"><label for="lb-modo">Saque definido por</label><select class="inp" id="lb-modo"><option value="taxa" ${L.modo==='taxa'?'selected':''}>% ao ano do patrimônio</option><option value="valor" ${L.modo==='valor'?'selected':''}>valor por mês</option></select></div>
+    ${L.modo==='taxa'?`<div class="f"><label for="lb-taxa">Saque ao ano (%)</label><input class="inp" id="lb-taxa" inputmode="decimal" value="${fN(L.taxa,2)}"></div>`
+      :`<div class="f"><label for="lb-saque">Saque por mês (R$)</label><input class="inp" id="lb-saque" inputmode="decimal" value="${fN(L.saque,0)}"></div>`}
+    <div class="f"><label for="lb-acoes">Em ações (%)</label><input class="inp" id="lb-acoes" inputmode="numeric" value="${L.acoes}" title="O resto fica em renda fixa rendendo CDI"></div>
+    <div class="f"><label for="lb-janela">Média histórica de</label><select class="inp" id="lb-janela">${[5,10,15,20,25].map(a=>`<option value="${a}" ${a===L.janela?'selected':''}>${a} anos</option>`).join('')}</select></div>
+    <div class="f"><label for="lb-ret">Retorno ao ano (%)</label><input class="inp" id="lb-ret" inputmode="decimal" value="${fN(L.ret,2)}" title="Padrão: ${esc(L.fonte)} da carteira escolhida. Mude para testar cenários."></div>
+    <div class="f"><label for="lb-inf">Inflação ao ano (%)</label><input class="inp" id="lb-inf" inputmode="decimal" value="${fN(L.inf,2)}" title="Padrão: IPCA, ${esc(L.fonte)}."></div>
+    <div class="f"><label for="lb-ir">Imposto sobre o rendimento (%)</label><input class="inp" id="lb-ir" inputmode="decimal" value="${fN(L.ir,1)}" title="Renda fixa paga 15% sobre o ganho (aplicações acima de 2 anos); dividendos de ações são isentos até certo limite. Use um valor médio."></div>
+    <div class="f"><label for="lb-prazo">Prazo (anos)</label><input class="inp" id="lb-prazo" inputmode="numeric" value="${L.prazo}"></div>
+    <div class="f"><label>Saque</label><label class="check"><input type="checkbox" id="lb-corrige" ${L.corrige?'checked':''}> corrigido pela inflação todo ano</label></div>
+    <div class="f"><button class="btn pri" data-act="lib">Simular</button></div>
+   </div>
+   <p class="note" style="margin:0;padding:0 16px 14px">Retorno e inflação vêm preenchidos com a ${esc(L.fonte)} (${L.acoes}% Ibovespa com dividendos e ${100-L.acoes}% CDI). Mudou a % em ações ou o período? O retorno é recalculado.</p></section>
+  <div id="lib-out"></div>`;
+}
+function lerLib(){ const L=S.lib, g=id=>document.getElementById(id); if(!g('lb-pat')) return;
+  const acoesAnt=L.acoes, janAnt=L.janela;
+  L.patrimonio=Math.max(0,numBR(g('lb-pat').value)||0);
+  L.modo=g('lb-modo').value;
+  if(g('lb-taxa')) L.taxa=Math.max(0,num(g('lb-taxa').value)||0);
+  if(g('lb-saque')) L.saque=Math.max(0,numBR(g('lb-saque').value)||0);
+  if(L.modo==='valor'&&!g('lb-saque')) L.saque=Math.round(L.patrimonio*L.taxa/100/12);
+  if(L.modo==='taxa'&&!g('lb-taxa')) L.taxa=+(L.saque*12/Math.max(1,L.patrimonio)*100).toFixed(2);
+  L.acoes=Math.min(100,Math.max(0,Math.round(num(g('lb-acoes').value)||0)));
+  L.janela=+g('lb-janela').value;
+  L.ret=num(g('lb-ret').value); L.inf=num(g('lb-inf').value); L.ir=Math.max(0,num(g('lb-ir').value)||0);
+  L.prazo=Math.min(80,Math.max(1,Math.round(num(g('lb-prazo').value)||30)));
+  L.corrige=g('lb-corrige').checked;
+  if(L.acoes!==acoesAnt||L.janela!==janAnt||!isFinite(L.ret)||!isFinite(L.inf)){ L.ret=null; libPadroes(); }
+}
+function runLib(){
+  const box=$('#lib-out'); if(!box||!S.macro) return; const L=S.lib;
+  const ret=L.ret/100, inf=L.inf/100, R=libProjeta(L,ret,inf);
+  const retLiq=ret*(1-L.ir/100), real=(1+retLiq)/(1+inf)-1;
+  // taxa máxima que preserva o poder de compra e taxa máxima que dura o prazo
+  let lo=0, hi=0.5; for(let k=0;k<50;k++){ const mid=(lo+hi)/2, x=libProjeta({...L,modo:'taxa'},ret,inf,mid); if(x.acabou==null&&x.final>1) lo=mid; else hi=mid; }
+  const taxaPrazo=lo;
+  // taxa que termina o prazo com o mesmo poder de compra do início (mesma regra de saque da simulação)
+  lo=0; hi=0.5; for(let k=0;k<50;k++){ const mid=(lo+hi)/2, x=libProjeta({...L,modo:'taxa'},ret,inf,mid); if(x.acabou==null&&x.finalReal>=L.patrimonio) lo=mid; else hi=mid; }
+  const taxaPerpetua=lo;
+  const W0=R.W0, taxaAtual=W0*12/Math.max(1,L.patrimonio);
+  const dura=R.acabou==null?`Dura os ${L.prazo} anos`:`Acaba em ${fN(R.acabou/12,1)} anos`;
+  const H=libHist(), hist=H?libHistorico(L,H,L.acoes/100):[];
+  const comp=hist.filter(h=>h.completo), ok_=comp.filter(h=>h.acabou==null);
+  const acima=hist.filter(h=>h.finalReal>=1).length;
+  const labs=R.pts.map(p=>p.ano);
+  box.innerHTML=`<div style="display:grid;gap:18px">
+   <section class="kpis">
+    <div class="kpi"><span class="lab">Saque por mês hoje</span><span class="val">${fR(W0)}</span><span class="sub muted">${fP(taxaAtual,2)} ao ano do patrimônio · ${fR(W0*12)} por ano</span></div>
+    <div class="kpi"><span class="lab">Retorno acima da inflação</span><span class="val ${cls(real)}">${fP(real,2)} ao ano</span><span class="sub muted">${fP(ret,2)} bruto${L.ir?` · ${fP(retLiq,2)} após imposto`:''} · inflação ${fP(inf,2)}</span></div>
+    <div class="kpi"><span class="lab">${dura}</span><span class="val ${R.acabou==null?'up':'down'}">${R.acabou==null?fR(R.finalReal):'R$ 0'}</span><span class="sub muted">${R.acabou==null?`patrimônio no fim, em reais de hoje (${fP(R.finalReal/L.patrimonio-1,0,true)} de poder de compra)`:'o dinheiro acaba antes do prazo'}</span></div>
+    <div class="kpi"><span class="lab">Saque que nunca acaba</span><span class="val">${fR(L.patrimonio*taxaPerpetua/12)}<small class="muted" style="font-size:12px"> /mês</small></span><span class="sub muted">${fP(taxaPerpetua,2)} ao ano: termina o prazo com o mesmo poder de compra do início</span></div>
+    <div class="kpi"><span class="lab">Saque máximo para ${L.prazo} anos</span><span class="val">${fR(L.patrimonio*taxaPrazo/12)}<small class="muted" style="font-size:12px"> /mês</small></span><span class="sub muted">${fP(taxaPrazo,2)} ao ano: zera exatamente no fim do prazo</span></div>
+   </section>
+   <section class="card"><div class="card-h"><h2>Patrimônio ao longo do tempo</h2><span class="note">com retorno e inflação constantes</span></div>
+    <div class="card-b"><div class="chart-box"><canvas id="ch-lib" aria-label="Patrimônio ao longo dos anos"></canvas></div>
+    <div class="legend" style="margin-top:10px"><span><i style="background:var(--s1)"></i>Patrimônio em reais de hoje (poder de compra)</span><span><i style="background:var(--s4)"></i>Patrimônio inicial</span></div>
+    <p class="note" style="margin:8px 0 0">O gráfico desconta a inflação para mostrar o que o dinheiro compra. O valor nominal, o que aparece no extrato, está na tabela.</p>
+    <div class="tbl-wrap" style="margin-top:12px"><table><thead><tr><th class="l">Ano</th><th>Saque por mês (nominal)</th><th>Patrimônio (nominal)</th><th>Patrimônio em reais de hoje</th></tr></thead><tbody>
+     ${R.pts.filter(p=>p.ano%5===0||p.ano===1).map(p=>`<tr style="cursor:default"><td class="l">${p.ano}</td><td>${fR(p.saque)}</td><td>${fB(p.nom)}</td><td class="${p.real>=L.patrimonio?'up':'down'}">${fB(p.real)}</td></tr>`).join('')}
+    </tbody></table></div></div></section>
+   ${hist.length?`<section class="card"><div class="card-h"><h2>E se fosse na vida real?</h2><span class="note">mesma regra com o Ibovespa, o CDI e o IPCA de verdade, começando em cada janeiro desde 2001</span></div>
+    <div class="card-b"><p class="note" style="margin:0 0 10px">Na média tudo parece estável, mas na vida real os anos ruins chegam em sequência. Quem começou a sacar logo antes de uma crise sofre mais. Aqui a mesma carteira e o mesmo saque passam pelos anos que de fato aconteceram${comp.length?`. Dos ${comp.length} começos que já completaram ${L.prazo} anos, ${ok_.length} chegaram ao fim sem zerar`:''}. ${acima} de ${hist.length} começos terminam (hoje ou no fim do prazo) com mais poder de compra que no início.</p>
+    <div class="tbl-wrap"><table><thead><tr><th class="l">Começou em</th><th>Anos até agora</th><th class="l">Poder de compra no fim (100% = o inicial)</th><th>Pior momento</th></tr></thead><tbody>
+     ${hist.map(h=>{ const w=Math.max(0,Math.min(200,h.finalReal*100)); return `<tr style="cursor:default"><td class="l">${h.ini}</td><td>${fN(h.anos,h.anos%1?1:0)}${h.completo?'':' <span class="muted">(até hoje)</span>'}</td>
+      <td class="l"><span class="libbar"><i style="width:${w/2}%;background:${h.acabou!=null?'var(--down)':h.finalReal>=1?'var(--up)':'var(--accent)'}"></i></span><b class="${h.acabou!=null?'down':h.finalReal>=1?'up':''}">${h.acabou!=null?`zerou em ${fN(h.acabou/12,1)} anos`:fP(h.finalReal,0)}</b></td>
+      <td class="${h.minReal<0.7?'down':''}">${fP(h.minReal,0)}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    <p class="note" style="margin:10px 0 0">O Ibovespa já inclui os dividendos reinvestidos. Não há custos de corretagem nem taxa de administração. "Pior momento" é o menor poder de compra que o patrimônio teve no caminho: abaixo de 70%, o susto foi grande. Os dados de CDI e IPCA começam em 2000, então os testes mais longos têm quase 26 anos.</p></div></section>`:''}
+   <p class="note">Simulação de estudo, não é recomendação. Retorno passado não garante o futuro. A conta não considera mudanças de regra de imposto, custos com assessoria nem gastos extras ao longo da vida.</p></div>`;
+  if(window.Chart&&$('#ch-lib')){
+    const o=chartOpts(v=>fB(v)); o.plugins.tooltip.callbacks.title=i=>'Ano '+i[0].label; o.scales.x.ticks.callback=function(v){ return this.getLabelForValue(v); }; o.scales.y.beginAtZero=true;
+    S.charts.lib=new Chart($('#ch-lib'),{type:'line',data:{labels:labs,datasets:[
+      {label:'Em reais de hoje',data:R.pts.map(p=>p.real),borderColor:css('--s1'),borderWidth:2.2,pointRadius:0,tension:.1,fill:'start',backgroundColor:css('--accent-soft')},
+      {label:'Patrimônio inicial',data:R.pts.map(()=>L.patrimonio),borderColor:css('--s4'),borderWidth:1.2,borderDash:[5,4],pointRadius:0}]},options:o}); }
+}
+
+// ===================== verificação automática dos dados =====================
+const QNIVEL={erro:['Provável erro','ruim'],atencao:['Atenção','aviso'],info:['Aviso','']};
+function qualDe(t){ return S.qual&&S.qual.alertas?S.qual.alertas.filter(a=>a.ticker===t):[]; }
+function mostraQual(){
+  const b=$('#qbtn'); if(!b||!S.qual) return; const r=S.qual.resumo||{}, n=(r.erro||0)+(r.atencao||0);
+  b.hidden=false; b.className='qbtn '+(r.erro?'ruim':n?'aviso':'bom');
+  b.textContent=r.erro?`⚠ ${r.erro} erro(s)`:n?`⚠ ${n} alerta(s)`:'✓ verificado'; b.title='Verificação automática dos dados: clique para ver';
+}
+function qualFicha(r){
+  const al=qualDe(r.ticker).filter(a=>!(a.campo==='preco'&&a.nivel==='info'));
+  if(!al.length) return '';
+  return `<div class="banner qban">${al.map(a=>`<div><b class="sglado ${QNIVEL[a.nivel][1]}">${QNIVEL[a.nivel][0]}:</b> ${esc(a.msg)}</div>`).join('')}
+    <div class="muted" style="font-size:11.5px;margin-top:4px">Verificação automática feita pelo robô a cada atualização. Os números marcados podem estar errados; confira no site de RI da empresa.</div></div>`;
+}
+function vQual(){
+  const Q=S.qual; if(!Q) return '';
+  const grupos=['erro','atencao','info'].map(nv=>{ const al=Q.alertas.filter(a=>a.nivel===nv); if(!al.length) return '';
+    return `<h3 class="sgh">${QNIVEL[nv][0]} · ${al.length}</h3><div class="tbl-wrap"><table><tbody>${al.map(a=>`<tr data-open="${esc(a.ticker)}"><td class="l" style="width:90px"><span class="tk">${esc(a.ticker)}</span></td><td class="l" style="white-space:normal;font-family:var(--f-body)">${esc(a.msg)}</td></tr>`).join('')}</tbody></table></div>`; }).join('');
+  return `<section class="card" id="qual-card"><div class="card-h"><h2>Verificação automática dos dados</h2><button class="btn" data-qual="fechar">Fechar</button></div>
+   <div class="card-b"><p class="note" style="margin:0 0 6px">A cada atualização o robô confere ${Q.empresas_b3} empresas da B3 e as ações dos EUA: números impossíveis (lucro zerado com receita, patrimônio vazio), muito fora do normal (P/L, P/VP, dividend yield), mudanças bruscas em relação à véspera e saltos no histórico de preço. Se a rodada vier muito pior que a anterior, ele não grava nada e o site fica com os dados da véspera.</p>${grupos||'<p>Nenhum alerta.</p>'}</div></section>`;
+}
 
 // ===================== tema claro / escuro =====================
 const TEMAS=['sistema','claro','escuro'];
@@ -1406,7 +1579,8 @@ try{ matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{
     if((meta.com_preco||0)<50) S.f.soPreco=false;
     $('#stamp').textContent=meta.atualizado_em?`Atualizado em ${meta.atualizado_em.split(' ')[0].split('-').reverse().join('/')} · ${meta.acoes} ações`:'';
   }catch(e){ $('#app').innerHTML='<div class="card"><div class="empty">Não consegui carregar os dados ('+esc(e.message)+').</div></div>'; return; }
-  getJSON('data/macro.json').then(m=>{ S.macro=m; if(S.tab==='simulador') render(); }).catch(()=>{});
+  getJSON('data/qualidade.json').then(q=>{ S.qual=q; mostraQual(); if(S.tab==='acao') render(); }).catch(()=>{});
+  getJSON('data/macro.json').then(m=>{ S.macro=m; if(S.tab==='simulador'||S.tab==='liberdade') render(); }).catch(()=>{});
   const h=(location.hash||'').slice(1).toUpperCase();
   if(h && byTk(h)){ S.tk=h; setTab('acao'); } else setTab('buscador');
 })();
