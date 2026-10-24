@@ -661,7 +661,7 @@ function refSetor(r,k,v,t){
 // ---- Fibonacci: 0% no primeiro clique, 100% no segundo; acima de 100% são extensões
 // mesmos níveis e a mesma marcação do Painel Operacional do WIN
 const FIB_NIVEIS=[0,23.6,38.2,50,61.8,76.3,100,111.8,138.2,161.8,200], FIB_EXT=111.8;
-const FIB_DICA='Clique em Marcar e depois no gráfico: o ponto trava no fechamento do mês mais próximo. Ou digite os valores. Fundo → topo marca o menor e o maior preço do período.';
+const FIB_DICA='Clique em Marcar e depois no candle: o ponto gruda na máxima, na mínima, na abertura ou no fechamento, o que estiver mais perto do mouse (no gráfico de linha, no fechamento). A mira mostra a data e o preço antes de você clicar. Ou digite os valores. Fundo → topo marca a menor mínima e a maior máxima do período.';
 
 
 // ---- histórico dos indicadores: barras da empresa ano a ano + linha da mediana do setor
@@ -772,6 +772,7 @@ function vAcao(){
     <div><div class="px">${ok(r.preco)?money(r.preco,curRow(r)):'sem cotação'}</div>
      <div class="mono" style="text-align:right;margin-top:6px"><span class="${cls(r.var_dia)}">${ok(r.var_dia)?fP(r.var_dia,2,true)+' no dia':''}</span> <span class="${cls(r.var_12m)}">${ok(r.var_12m)?' · '+fP(r.var_12m,1,true)+' em 12m':''}</span></div></div></div>
   </div></section>
+  ${!ok(r.preco)?`<div class="banner">Sem cotação no Yahoo para ${esc(r.ticker)}. Normalmente é porque o código mudou (fusão, troca de nome), a ação saiu da bolsa ou quase não negocia. Os números do balanço continuam valendo, mas P/L, P/VP, dividend yield e o gráfico dependem do preço.</div>`:''}
   ${sgFicha(r)}
   <div class="two">
    <section class="card"><div class="card-h"><h2>Histórico</h2>
@@ -838,7 +839,7 @@ async function drawAcao(){
   const sel={a:null,b:null,drag:false};
   // ---- Fibonacci (motor do Painel Operacional WIN: 0% e 100% são valores; níveis = a + (b − a) × p)
   const fkey=r.ticker+'|'+S.modo, fib=S.fib[fkey]||(S.fib[fkey]={a:null,b:null});
-  let pick=0;
+  let pick=0, mira=null;
   const fibAtivo=()=>S.ferr==='fibo'&&fib.a!=null&&fib.b!=null&&fib.a!==fib.b;
   const niveis=()=>FIB_NIVEIS.filter(p=>S.fibExt||p<FIB_EXT);
   const valorNivel=p=>fib.a+(fib.b-fib.a)*p/100;
@@ -849,8 +850,17 @@ async function drawAcao(){
       c.strokeStyle=cor; c.lineWidth=chave?1.4:1; c.setLineDash(chave?[]:[3,3]);
       c.beginPath(); c.moveTo(a.left,py+.5); c.lineTo(a.right,py+.5); c.stroke(); c.setLineDash([]);
       c.fillStyle=cor; c.fillText(fN(v)+'  ('+fN(p,1)+'%)',a.right+8,py); }
-    c.fillStyle=css('--fib-chave'); for(const v of [fib.a,fib.b]){ const py=y.getPixelForValue(v); if(py>=a.top&&py<=a.bottom){ c.beginPath(); c.arc(a.left+6,py,3.5,0,6.284); c.fill(); } }
-    c.restore(); }};
+    c.fillStyle=css('--fib-chave'); for(const [v,dt] of [[fib.a,fib.da],[fib.b,fib.db]]){ const py=y.getPixelForValue(v); if(py<a.top||py>a.bottom) continue;
+      const j=dt?lab.indexOf(dt):-1, px=j>=0?ch.scales.x.getPixelForValue(j):a.left+6; c.beginPath(); c.arc(px,py,4,0,6.284); c.fill(); }
+    c.restore(); },
+    afterDraw(ch){ if(!mira) return; const x=ch.scales.x, y=ch.scales.y, a=ch.chartArea, c=ch.ctx, px=x.getPixelForValue(mira.j), py=y.getPixelForValue(mira.v);
+      c.save(); c.strokeStyle=css('--accent'); c.lineWidth=1; c.setLineDash([3,3]);
+      c.beginPath(); c.moveTo(px,a.top); c.lineTo(px,a.bottom); c.moveTo(a.left,py); c.lineTo(a.right,py); c.stroke(); c.setLineDash([]);
+      c.fillStyle=css('--accent'); c.beginPath(); c.arc(px,py,5,0,6.284); c.fill();
+      const txt=lab[mira.j].split('-').reverse().join('/')+' · '+mira.nome+' '+fN(mira.v); c.font='600 11.5px '+css('--f-mono');
+      const w=c.measureText(txt).width+12, bx=Math.min(Math.max(a.left,px+8),a.right-w), by=Math.max(a.top,py-26);
+      c.fillStyle=css('--panel'); c.fillRect(bx,by,w,20); c.strokeStyle=css('--accent'); c.strokeRect(bx,by,w,20); c.fillStyle=css('--fg'); c.textBaseline='middle'; c.fillText(txt,bx+6,by+10);
+      c.restore(); }};
   const selPlugin={id:'sel',beforeDatasetsDraw(ch){ if(sel.a==null||sel.b==null||sel.a===sel.b) return; const x=ch.scales.x, a=ch.chartArea, c=ch.ctx;
     const x0=x.getPixelForValue(Math.min(sel.a,sel.b)), x1=x.getPixelForValue(Math.max(sel.a,sel.b));
     c.save(); c.fillStyle=css('--accent-soft'); c.fillRect(x0,a.top,x1-x0,a.bottom-a.top); c.strokeStyle=css('--accent'); c.setLineDash([4,3]); c.beginPath(); c.moveTo(x0,a.top); c.lineTo(x0,a.bottom); c.moveTo(x1,a.top); c.lineTo(x1,a.bottom); c.stroke(); c.restore(); }};
@@ -888,6 +898,7 @@ async function drawAcao(){
     opts.plugins.tooltip.callbacks.label=c=>{ const j=c.dataIndex, m=v=>money(v,curRow(r)); return ['Abertura '+m(O[j]),'Máxima '+m(H[j]),'Mínima '+m(L[j]),'Fechamento '+m(serie[j])].concat((PADS[j]||[]).map(p=>'Padrão: '+p[0])); }; }
   if(vtf!=='m') opts.scales.x.ticks.callback=function(v){ const l=this.getLabelForValue(v); return vtf==='d'?l.slice(8,10)+'/'+l.slice(5,7):l.slice(8,10)+'/'+l.slice(5,7)+'/'+l.slice(2,4); };
   padLista(hv,vtf,LIM,candle);
+  { const f0=opts.plugins.tooltip.filter; opts.plugins.tooltip.filter=it=>!pick&&(f0?f0(it):true); }   // sem caixinha por cima da mira do Fibonacci
   if(S.charts.h){ try{ S.charts.h.destroy(); }catch{} }
   const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:dsPreco},
     options:opts,plugins:[selPlugin,candlePlugin,fibPlugin]});
@@ -908,12 +919,14 @@ async function drawAcao(){
     const msg=$('#fib-msg'); if(msg) msg.textContent=m?'Clique no gráfico para fixar o ponto de '+(m===1?'0%':'100%'):''; };
   if(S.ferr==='fibo'){
     sincInputs(); redesenha();
-    $('#fib-p0').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.a=isFinite(v)?v:null; redesenha(); });
-    $('#fib-p1').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.b=isFinite(v)?v:null; redesenha(); });
+    $('#fib-p0').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.a=isFinite(v)?v:null; fib.da=null; redesenha(); });
+    $('#fib-p1').addEventListener('input',e=>{ const v=parseFloat(e.target.value); fib.b=isFinite(v)?v:null; fib.db=null; redesenha(); });
     $('#fib-pick0').addEventListener('click',()=>setPick(pick===1?0:1));
     $('#fib-pick1').addEventListener('click',()=>setPick(pick===2?0:2));
-    $('#fib-auto').addEventListener('click',()=>{ const lo=(candle?L:serie).filter(ok), hi=(candle?H:serie).filter(ok); fib.a=Math.min(...lo); fib.b=Math.max(...hi); sincInputs(); redesenha(); });
-    $('#fib-clear').addEventListener('click',()=>{ fib.a=fib.b=null; setPick(0); sincInputs(); redesenha(); });
+    $('#fib-auto').addEventListener('click',()=>{ const lo=(candle?L:serie), hi=(candle?H:serie); let ia=-1, ib=-1;
+      lo.forEach((v,j)=>{ if(ok(v)&&(ia<0||v<lo[ia])) ia=j; }); hi.forEach((v,j)=>{ if(ok(v)&&(ib<0||v>hi[ib])) ib=j; });
+      if(ia<0||ib<0) return; fib.a=lo[ia]; fib.b=hi[ib]; fib.da=lab[ia]; fib.db=lab[ib]; sincInputs(); redesenha(); });
+    $('#fib-clear').addEventListener('click',()=>{ fib.a=fib.b=null; fib.da=fib.db=null; setPick(0); sincInputs(); redesenha(); });
     $('#fib-png').addEventListener('click',()=>{ const a=document.createElement('a'); a.download=r.ticker+'_fibonacci.png'; a.href=ctx.toDataURL('image/png'); a.click(); });
     $('#fib-ext').addEventListener('change',e=>{ S.fibExt=e.target.checked; redesenha(); });
     $('#fib-fit').addEventListener('change',e=>{ S.fibFit=e.target.checked; redesenha(); });
@@ -934,8 +947,13 @@ async function drawAcao(){
       <div class="it"><small>Proventos pagos</small><b>${money(dv,curRow(r))} por ação <span class="muted">(${fP(dv/h.c[i],1)} do preço inicial)</span></b></div>
       <button class="btn x" id="sel-clear">Limpar</button>`; };
   if(S.ferr==='fibo'){
-    ctx.addEventListener('click',e=>{ if(!pick) return; const v=serie[idx(e)]; if(!ok(v)) return;
-      if(pick===1) fib.a=v; else fib.b=v; setPick(0); sincInputs(); redesenha(); });
+    const ima=e=>{ const j=idx(e), rc=ctx.getBoundingClientRect(), yv=ch.scales.y.getValueForPixel(e.clientY-rc.top);
+      const cand=(candle?[['máxima',H[j]],['mínima',L[j]],['abertura',O[j]],['fechamento',serie[j]]]:[['fechamento',serie[j]]]).filter(([,v])=>ok(v));
+      if(!cand.length) return null; cand.sort((p,q)=>Math.abs(p[1]-yv)-Math.abs(q[1]-yv)); return {j,v:cand[0][1],nome:cand[0][0]}; };
+    ctx.addEventListener('pointermove',e=>{ if(!pick){ if(mira){ mira=null; ch.draw(); } return; } mira=ima(e); ch.draw(); });
+    ctx.addEventListener('pointerleave',()=>{ if(mira){ mira=null; ch.draw(); } });
+    ctx.addEventListener('click',e=>{ if(!pick) return; const m=ima(e); if(!m) return;
+      if(pick===1){ fib.a=m.v; fib.da=lab[m.j]; } else { fib.b=m.v; fib.db=lab[m.j]; } mira=null; setPick(0); sincInputs(); redesenha(); });
   } else {
     ctx.addEventListener('pointerdown',e=>{ sel.drag=true; sel.a=sel.b=idx(e); try{ ctx.setPointerCapture(e.pointerId); }catch{} ch.draw(); info(); });
     ctx.addEventListener('pointermove',e=>{ if(!sel.drag) return; sel.b=idx(e); ch.draw(); info(); });
