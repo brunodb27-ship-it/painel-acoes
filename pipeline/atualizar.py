@@ -33,6 +33,7 @@ import fundamentos as F  # noqa: E402
 import historico as H  # noqa: E402
 import score as SC  # noqa: E402
 import diario as DI  # noqa: E402
+import qualidade as Q  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 SAIDA = RAIZ / "docs" / "data"
@@ -406,6 +407,17 @@ def main():
             log("ETFs B3 e índices:", len(ex))
         except Exception as e:  # noqa: BLE001
             log("ETFs/índices falharam, seguindo sem eles:", e)
+    # --- verificação automática: compara com a rodada anterior antes de gravar
+    try:
+        anteriores = json.loads((SAIDA / "indicadores.json").read_text())
+    except Exception:  # noqa: BLE001
+        anteriores = None
+    qual = Q.verificar(linhas, anteriores, hist if hist else _ler_hist(), HOJE)
+    log("verificação:", qual["resumo"], "| bloqueio:", qual["bloqueio"])
+    if qual["bloqueio"] and not a.sem_precos and not a.precos_json:
+        # não sobrescreve os dados bons da véspera; a rodada falha e o GitHub avisa por e-mail
+        raise SystemExit("Verificação travou a gravação: " + qual["bloqueio"])
+    (SAIDA / "qualidade.json").write_text(json.dumps(qual, ensure_ascii=False, separators=(",", ":")))
     (SAIDA / "indicadores.json").write_text(json.dumps(linhas, ensure_ascii=False, separators=(",", ":")))
     for t, h in hist.items():
         (SAIDA / "hist" / f"{t}.json").write_text(json.dumps(h, separators=(",", ":")))
