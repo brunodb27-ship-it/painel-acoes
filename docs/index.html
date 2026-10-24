@@ -129,6 +129,7 @@ th.hl{color:var(--accent)}
 .info:hover,.info.aberto{border-color:var(--accent);color:var(--accent)}
 .info:hover::after,.info:focus-visible::after,.info.aberto::after{content:attr(data-tip);position:absolute;z-index:30;top:calc(100% + 8px);left:-8px;width:min(340px,82vw);white-space:pre-line;text-align:left;background:var(--panel);border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.35);color:var(--fg);padding:10px 12px;border-radius:9px;font:400 12.5px/1.5 var(--f-body)}
 @media (max-width:760px){ .info:hover::after,.info:focus-visible::after,.info.aberto::after{position:fixed;left:12px;right:12px;top:auto;bottom:12px;width:auto} }
+.padit{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
 .regua{padding:4px 0 2px}
 .regua .trilho{position:relative;height:10px;border-radius:99px;margin:30px 0 6px;background:linear-gradient(90deg,var(--down-soft) 0 35%,var(--panel2) 35% 65%,var(--up-soft) 65% 100%);box-shadow:inset 0 0 0 1px var(--line)}
 .regua .trilho::before,.regua .trilho::after{content:"";position:absolute;top:0;bottom:0;width:0;border-left:1px dashed var(--line)}
@@ -252,7 +253,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 // ===================== estado =====================
 const S = { hindK:'roe', sg:{visao:'ambos',lado:'',mercado:'',setor:'',padrao:'',liq:'1000',top:'50'}, tab:'buscador', rows:[], meta:{}, macro:null, hist:{}, tk:'', sort:{k:'valor_mercado',d:-1},
   f:{mercado:'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:true,semBanco:false},
-  range:'10', modo:'preco', graf:'linha', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
+  range:'10', tf:'m', rangeTf:{d:'6',w:'24'}, dia:{}, modo:'preco', graf:'linha', ferr:'medir', fib:{}, fibExt:true, fibFit:false, sim:{modo:'uma',tk:'',valor:10000,inicio:'2016-01',aporte:0,reinv:true,real:false,semCambio:false,opc:0,imposto:false},
   rk:{n:'10',crit:'dy_medio',mercado:'',setor:'',liq:'500',top:'50',completo:true,asc:false}, rank:null, rankErr:'',
   rf:{produto:'cdb',valor:10000,aporte:500,prazo:5,unidade:'anos',tipo:'cdi',taxa:100,taxaUn:'aa',cdi:null,ipca:null},
   cart:{itens:['ITUB4','PETR4','WEGE3','BBAS3'].map(tk=>({tk,p:''}))}, charts:{} };
@@ -724,6 +725,41 @@ async function drawHind(r){
   note.textContent=txt+(ini>0?` O histórico começa em ${labs[0]}, primeiro ano com dados desta empresa.`:'');
 }
 
+// ---- candles diários e semanais (arquivo separado, carregado só quando pede)
+const TF_RANGES={m:[['1','1A'],['5','5A'],['10','10A'],['20','20A'],['max','Máx']],w:[['12','1A'],['24','2A'],['60','5A']],d:[['3','3M'],['6','6M'],['12','1A']]};
+async function loadDia(t){ if(t in S.dia) return S.dia[t]; try{ S.dia[t]=await getJSON('data/d/'+t+'.json'); }catch{ S.dia[t]=null; } return S.dia[t]; }
+function padroesCandle(O,H,L,C,i,lim){
+  const out=[]; if(!O||!H||!L||!C||i<6) return out;
+  const vals=[O[i],H[i],L[i],C[i],O[i-1],C[i-1],C[i-6]]; if(!vals.every(v=>ok(v)&&v>0)) return out;
+  if(L[i]>Math.min(O[i],C[i])*1.001||H[i]<Math.max(O[i],C[i])*0.999) return out;
+  const caiu=C[i-1]<C[i-6]*(1-lim), subiu=C[i-1]>C[i-6]*(1+lim);
+  const corpo=Math.abs(C[i]-O[i]), faixa=Math.max(H[i]-L[i],1e-9), sup=H[i]-Math.max(O[i],C[i]), inf=Math.min(O[i],C[i])-L[i], m=Math.max(corpo,faixa*.05);
+  if(corpo<=faixa*.35&&inf>=2*m&&sup<=faixa*.15){ if(caiu) out.push(['Martelo','alta']); else if(subiu) out.push(['Enforcado','baixa']); }
+  if(corpo<=faixa*.35&&sup>=2*m&&inf<=faixa*.15){ if(subiu) out.push(['Estrela cadente','baixa']); else if(caiu) out.push(['Martelo invertido','alta']); }
+  const o0=O[i-1], c0=C[i-1];
+  if(o0>c0&&C[i]>O[i]&&C[i]>=o0&&O[i]<=c0&&caiu) out.push(['Engolfo de alta','alta']);
+  if(c0>o0&&O[i]>C[i]&&O[i]>=c0&&C[i]<=o0&&subiu) out.push(['Engolfo de baixa','baixa']);
+  if(corpo<=faixa*.08) out.push(['Doji','neutro']);
+  return out;
+}
+function padLista(hv,tf,lim,candle){
+  const box=$('#pad-list'); if(!box) return;
+  if(!candle){ box.innerHTML=''; return; }
+  const n=hv.d.length, achados=[];
+  for(let i=Math.max(6,n-10);i<n;i++) for(const [nm,tp] of padroesCandle(hv.o,hv.h,hv.l,hv.c,i,lim)) achados.push({i,nm,tp});
+  const B=S.sinais&&(tf==='m'?S.sinais.backtest:(S.sinais.curto||{})[tf]);
+  const hz=tf==='m'?'6 meses':tf==='w'?((B&&B.horizonte)||8)+' semanas':((B&&B.horizonte)||10)+' pregões';
+  const nomeTf={m:'meses',w:'semanas',d:'pregões'}[tf];
+  if(!achados.length){ box.innerHTML=`<p class="note" style="margin:8px 0 0">Nenhum padrão de candle nos últimos 10 ${nomeTf}. Os triângulos no gráfico marcam os padrões mais antigos: verde para alta e vermelho para baixa.</p>`; return; }
+  const br=d=>d.length>7?d.split('-').reverse().join('/'):d.split('-').reverse().join('/');
+  box.innerHTML=`<h3 class="sgh" style="margin-top:12px">Padrões nos últimos 10 ${nomeTf}</h3>`+achados.reverse().map(a=>{
+    const st=B&&B.sinais&&B.sinais[a.nm], base=B&&B.base;
+    const hist=st&&base?` · no histórico, ${fP(st.positivos,0)} subiram em ${hz} <span class="muted">(média de todos os candles: ${fP(base.positivos,0)})</span>`:'';
+    const aberto=a.i===n-1?' <span class="muted">· candle ainda aberto</span>':'';
+    return `<div class="padit">${sgTag(a.nm,a.tp)} <span>${br(hv.d[a.i])}${aberto}${hist}</span></div>`; }).join('')
+    +`<p class="note" style="margin:6px 0 0">A cor segue o que a teoria diz (verde = alta, vermelho = baixa); a porcentagem mostra o que aconteceu de fato nestas ações. Padrão isolado é fraco: confirme com tendência, suporte e Fibonacci.</p>`;
+}
+
 function fmt(v,t,cur){ return t==='p'?fP(v):t==='r'?money(v,cur):t==='b'?fBc(v,cur):fX(v); }
 function vAcao(){
   const r=byTk(S.tk);
@@ -740,7 +776,8 @@ function vAcao(){
   <div class="two">
    <section class="card"><div class="card-h"><h2>Histórico</h2>
      <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <div class="seg">${[['1','1A'],['5','5A'],['10','10A'],['20','20A'],['max','Máx']].map(([k,l])=>`<button data-range="${k}" aria-pressed="${S.range===k}">${l}</button>`).join('')}</div>
+      <div class="seg">${[['m','Mensal'],['w','Semanal'],['d','Diário']].map(([k,l])=>`<button data-tf="${k}" aria-pressed="${S.tf===k}">${l}</button>`).join('')}</div>
+      <div class="seg">${(TF_RANGES[S.tf]).map(([k,l])=>`<button data-range="${k}" aria-pressed="${(S.tf==='m'?S.range:S.rangeTf[S.tf])===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['preco','Preço'],['total','Com dividendos']].map(([k,l])=>`<button data-modo="${k}" aria-pressed="${S.modo===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['linha','Linha'],['candle','Candles']].map(([k,l])=>`<button data-graf="${k}" aria-pressed="${S.graf===k}">${l}</button>`).join('')}</div>
       <div class="seg">${[['medir','Medir'],['fibo','Fibonacci']].map(([k,l])=>`<button data-ferr="${k}" aria-pressed="${S.ferr===k}">${l}</button>`).join('')}</div>
@@ -752,7 +789,7 @@ function vAcao(){
     <div class="chart-box"><canvas id="ch-hist" aria-label="Gráfico do histórico de preço."></canvas></div>
     ${S.ferr==='fibo'?`<div class="fibopts"><label><input type="checkbox" id="fib-ext" ${S.fibExt?'checked':''}> Extensões acima de 100%</label><label><input type="checkbox" id="fib-fit" ${S.fibFit?'checked':''}> Ajustar escala aos níveis</label><span id="fib-msg" style="color:var(--fib-chave)"></span></div>
     <div class="fibwrap"><p class="note" style="margin:0">${FIB_DICA}</p><table class="fibtbl" id="fib-tbl"></table></div>`
-    :`<div class="selbox" id="sel-info"><span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span></div>`}<p class="note" id="hist-note" style="margin:10px 0 0"></p></div></section>
+    :`<div class="selbox" id="sel-info"><span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span></div>`}<p class="note" id="hist-note" style="margin:10px 0 0"></p><div id="pad-list" class="padlist"></div></div></section>
    <section class="card"><div class="card-h"><h2>Proventos por ano</h2></div><div class="card-b" id="divs"><span class="muted">Carregando…</span></div></section>
   </div>
   <section class="card"><div class="card-h"><h2>Indicadores</h2><span class="note">Balanço de ${esc((r.data_balanco||'').split('-').reverse().join('/'))} · passe o mouse no nome para ver a conta</span></div>
@@ -781,12 +818,22 @@ async function drawAcao(){
   const h=await loadHist(r.ticker); if(S.tab!=='acao'||S.tk!==r.ticker) return;
   const note=$('#hist-note'), dv=$('#divs');
   if(!h){ note.textContent='Histórico ainda não disponível para esta ação.'; dv.innerHTML='<span class="muted">Sem dados.</span>'; return; }
-  let n=h.d.length, from=0;
-  if(S.range!=='max'){ const m=+S.range*12; from=Math.max(0,n-m-1); }
-  const lab=h.d.slice(from); const serie=(S.modo==='total'?h.a:h.c).slice(from);
+  // diário e semanal vêm de outro arquivo (só preço, sem ajuste de dividendos)
+  const tf=S.tf; let hv=h, tfAviso='';
+  if(tf!=='m'){ const dd=await loadDia(r.ticker); if(S.tab!=='acao'||S.tk!==r.ticker) return;
+    const x=dd&&dd[tf];
+    if(x&&x.t&&x.t.length>10) hv={d:x.t,c:x.c,a:x.c,v:x.c.map(()=>0),o:x.o,h:x.h,l:x.l};
+    else tfAviso=' · <span class="muted">Os candles '+(tf==='d'?'diários':'semanais')+' aparecem depois da próxima atualização automática; mostrando o mensal.</span>'; }
+  const vtf=hv===h?'m':tf, PER={m:12,w:52,d:252}[vtf];
+  let n=hv.d.length, from=0;
+  if(vtf==='m'){ if(S.range!=='max'){ const m=+S.range*12; from=Math.max(0,n-m-1); } }
+  else from=Math.max(0,n-(+S.rangeTf[vtf]*PER/12)-1);
+  const lab=hv.d.slice(from); const serie=(S.modo==='total'?hv.a:hv.c).slice(from);
   const base=serie[0], ult=serie[serie.length-1];
-  const ret=ult/base-1, anos=(lab.length-1)/12, cagr=anos>0?Math.pow(ult/base,1/anos)-1:null;
+  const ret=ult/base-1, anos=(lab.length-1)/PER, cagr=anos>0?Math.pow(ult/base,1/anos)-1:null;
   note.innerHTML=`${S.modo==='total'?'Retorno com dividendos reinvestidos':'Variação do preço'} no período: <b class="mono ${cls(ret)}">${fP(ret,1,true)}</b>${ok(cagr)&&anos>=1?` · <span class="mono">${fP(cagr,1)} ao ano</span>`:''} · ${lab[0].split('-').reverse().join('/')} a ${lab.at(-1).split('-').reverse().join('/')}${h.src?` · fonte: ${esc(h.src)}`:''}`;
+  if(vtf!=='m') note.innerHTML+=' · candles '+(vtf==='d'?'diários':'semanais')+', só preço';
+  note.innerHTML+=tfAviso;
   const ctx=$('#ch-hist'); if(!ctx||!window.Chart) return;
   const sel={a:null,b:null,drag:false};
   // ---- Fibonacci (motor do Painel Operacional WIN: 0% e 100% são valores; níveis = a + (b − a) × p)
@@ -809,12 +856,17 @@ async function drawAcao(){
     c.save(); c.fillStyle=css('--accent-soft'); c.fillRect(x0,a.top,x1-x0,a.bottom-a.top); c.strokeStyle=css('--accent'); c.setLineDash([4,3]); c.beginPath(); c.moveTo(x0,a.top); c.lineTo(x0,a.bottom); c.moveTo(x1,a.top); c.lineTo(x1,a.bottom); c.stroke(); c.restore(); }};
   // ---- candles mensais: abertura, máxima e mínima vêm na mesma base do fechamento;
   //      no modo "com dividendos" cada mês é ajustado pelo mesmo fator do fechamento (a ÷ c)
-  const temOHLC=Array.isArray(h.o)&&Array.isArray(h.h)&&Array.isArray(h.l);
+  const temOHLC=Array.isArray(hv.o)&&Array.isArray(hv.h)&&Array.isArray(hv.l);
   const candle=S.graf==='candle'&&temOHLC;
-  const fator=i=>S.modo==='total'&&h.c[i]?h.a[i]/h.c[i]:1;
-  const O=candle?h.o.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
-  const H=candle?h.h.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
-  const L=candle?h.l.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
+  const fator=i=>S.modo==='total'&&hv.c[i]?hv.a[i]/hv.c[i]:1;
+  const O=candle?hv.o.slice(from).map((v,j)=>v==null?null:v*fator(from+j)):null;
+  // o Yahoo às vezes manda máxima ou mínima zerada no mês em andamento: usa o corpo do candle no lugar
+  const corpo=(j,f)=>{ const o=hv.o[from+j], c=hv.c[from+j]; return ok(o)&&ok(c)?f(o,c):c; };
+  const H=candle?hv.h.slice(from).map((v,j)=>(v==null||v<=0?corpo(j,Math.max):Math.max(v,corpo(j,Math.max)))*fator(from+j)):null;
+  const L=candle?hv.l.slice(from).map((v,j)=>(v==null||v<=0?corpo(j,Math.min):Math.min(v,corpo(j,Math.min)))*fator(from+j)):null;
+  // padrões de candle (mesmas regras do score; tendência anterior de 8% no mensal, 5% no semanal, 3% no diário)
+  const LIM={m:.08,w:.05,d:.03}[vtf];
+  const PADS=candle?lab.map((_,j)=>{ const p=padroesCandle(hv.o,hv.h,hv.l,hv.c,from+j,LIM); return p.length?p:null; }):[];
   const candlePlugin={id:'candle',afterDatasetsDraw(ch){ if(!candle) return; const x=ch.scales.x, y=ch.scales.y, c=ch.ctx, n=lab.length;
     const larg=Math.max(1,Math.min(14,(ch.chartArea.right-ch.chartArea.left)/n*0.62));
     c.save();
@@ -823,7 +875,9 @@ async function drawAcao(){
       c.strokeStyle=cor; c.fillStyle=cor; c.lineWidth=1;
       c.beginPath(); c.moveTo(px,y.getPixelForValue(hi)); c.lineTo(px,y.getPixelForValue(lo)); c.stroke();
       const y1=y.getPixelForValue(Math.max(o,cl)), y2=y.getPixelForValue(Math.min(o,cl));
-      c.fillRect(px-larg/2,y1,larg,Math.max(1,y2-y1)); }
+      c.fillRect(px-larg/2,y1,larg,Math.max(1,y2-y1));
+      const pp=PADS[j]; if(pp){ for(const [nm,tp] of pp){ if(tp==='neutro') continue; const al=tp==='alta', ty=y.getPixelForValue(al?lo:hi)+(al?8:-8), s=Math.max(4,Math.min(6,larg/2+1));
+        c.fillStyle=al?css('--up'):css('--down'); c.beginPath(); if(al){ c.moveTo(px,ty); c.lineTo(px-s,ty+s*1.4); c.lineTo(px+s,ty+s*1.4); } else { c.moveTo(px,ty); c.lineTo(px-s,ty-s*1.4); c.lineTo(px+s,ty-s*1.4); } c.fill(); break; } } }
     c.restore(); }};
   const dsPreco=candle
     ? [{data:serie,borderColor:'transparent',borderWidth:0,pointRadius:0,fill:false},
@@ -831,7 +885,9 @@ async function drawAcao(){
     : [{data:serie,borderColor:css('--accent'),borderWidth:2,pointRadius:0,tension:.15,fill:'start',backgroundColor:c=>{ const a=c.chart.chartArea; if(!a) return 'transparent'; const g=c.chart.ctx.createLinearGradient(0,a.top,0,a.bottom); g.addColorStop(0,css('--accent-soft')); g.addColorStop(1,'rgba(0,0,0,0)'); return g; }}];
   const opts=chartOpts(v=>money(v,curRow(r)));
   if(candle){ opts.plugins.tooltip.filter=it=>it.datasetIndex===0;
-    opts.plugins.tooltip.callbacks.label=c=>{ const j=c.dataIndex, m=v=>money(v,curRow(r)); return ['Abertura '+m(O[j]),'Máxima '+m(H[j]),'Mínima '+m(L[j]),'Fechamento '+m(serie[j])]; }; }
+    opts.plugins.tooltip.callbacks.label=c=>{ const j=c.dataIndex, m=v=>money(v,curRow(r)); return ['Abertura '+m(O[j]),'Máxima '+m(H[j]),'Mínima '+m(L[j]),'Fechamento '+m(serie[j])].concat((PADS[j]||[]).map(p=>'Padrão: '+p[0])); }; }
+  if(vtf!=='m') opts.scales.x.ticks.callback=function(v){ const l=this.getLabelForValue(v); return vtf==='d'?l.slice(8,10)+'/'+l.slice(5,7):l.slice(8,10)+'/'+l.slice(5,7)+'/'+l.slice(2,4); };
+  padLista(hv,vtf,LIM,candle);
   if(S.charts.h){ try{ S.charts.h.destroy(); }catch{} }
   const ch=S.charts.h=new Chart(ctx,{type:'line',data:{labels:lab,datasets:dsPreco},
     options:opts,plugins:[selPlugin,candlePlugin,fibPlugin]});
@@ -866,10 +922,14 @@ async function drawAcao(){
   const info=()=>{ const box=$('#sel-info'); if(!box) return;
     if(sel.a==null||sel.b==null||sel.a===sel.b){ box.innerHTML='<span class="muted">Clique e arraste no gráfico para medir um período: variação e proventos pagos.</span>'; return; }
     const i=from+Math.min(sel.a,sel.b), j=from+Math.max(sel.a,sel.b);
-    const pv=h.c[j]/h.c[i]-1, tv=h.a[j]/h.a[i]-1; let dv=0; for(let k=i+1;k<=j;k++) dv+=h.v[k]||0;
-    const meses=j-i, anos=meses/12, aa=anos>=1?Math.pow(h.a[j]/h.a[i],1/anos)-1:null, br=d=>d.split('-').reverse().join('/');
-    box.innerHTML=`<div class="it"><small>Período</small><b>${br(h.d[i])} → ${br(h.d[j])}</b></div>
-      <div class="it"><small>Preço</small><b>${fN(h.c[i])} → ${fN(h.c[j])} <span class="${cls(pv)}">${fP(pv,1,true)}</span></b></div>
+    const pv=hv.c[j]/hv.c[i]-1, tv=hv.a[j]/hv.a[i]-1; let dv=0; for(let k=i+1;k<=j;k++) dv+=hv.v[k]||0;
+    const anos=(j-i)/PER, aa=anos>=1?Math.pow(hv.a[j]/hv.a[i],1/anos)-1:null, br=d=>d.split('-').reverse().join('/');
+    if(vtf!=='m'){ box.innerHTML=`<div class="it"><small>Período</small><b>${br(hv.d[i])} → ${br(hv.d[j])} <span class="muted">(${j-i} ${vtf==='d'?'pregões':'semanas'})</span></b></div>
+      <div class="it"><small>Preço</small><b>${fN(hv.c[i])} → ${fN(hv.c[j])} <span class="${cls(pv)}">${fP(pv,1,true)}</span></b></div>
+      <div class="it"><small>Máxima e mínima</small><b>${fN(Math.max(...hv.h.slice(i,j+1).filter(ok)))} · ${fN(Math.min(...hv.l.slice(i,j+1).filter(ok)))}</b></div>
+      <span class="muted" style="font-size:12px">Proventos e retorno com dividendos: use o gráfico mensal.</span><button class="btn x" id="sel-clear">Limpar</button>`; return; }
+    box.innerHTML=`<div class="it"><small>Período</small><b>${br(hv.d[i])} → ${br(hv.d[j])}</b></div>
+      <div class="it"><small>Preço</small><b>${fN(hv.c[i])} → ${fN(hv.c[j])} <span class="${cls(pv)}">${fP(pv,1,true)}</span></b></div>
       <div class="it"><small>Com dividendos</small><b class="${cls(tv)}">${fP(tv,1,true)}${ok(aa)?` <span class="muted">(${fP(aa,1)} a.a.)</span>`:''}</b></div>
       <div class="it"><small>Proventos pagos</small><b>${money(dv,curRow(r))} por ação <span class="muted">(${fP(dv/h.c[i],1)} do preço inicial)</span></b></div>
       <button class="btn x" id="sel-clear">Limpar</button>`; };
@@ -1252,7 +1312,8 @@ document.addEventListener('click',e=>{
   const hb=e.target.closest('[data-hind]'); if(hb){ S.hindK=hb.dataset.hind; document.querySelectorAll('[data-hind]').forEach(b=>b.setAttribute('aria-pressed',b===hb)); const r=byTk(S.tk); if(r) drawHind(r); return; }
   const ib=e.target.closest('.info'); if(ib){ e.preventDefault(); ib.classList.toggle('aberto'); return; }
   const sv=e.target.closest('[data-sgv]'); if(sv){ S.sg.visao=sv.dataset.sgv; render(); return; }
-  const fs=e.target.closest('[data-fibscore]'); if(fs){ const x=sgDe(S.tk); const f=x&&x.t&&x.t.fib; if(f){ S.modo='preco'; S.ferr='fibo'; S.fib[S.tk+'|preco']={a:f.b,b:f.a}; const ini=+f.de.slice(0,4), anos=new Date().getFullYear()-ini+1; S.range=anos<=1?'1':anos<=5?'5':anos<=10?'10':anos<=20?'20':'max'; render(); setTimeout(()=>{ const c=$('#ch-hist'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); },50); } return; }
+  const tfb=e.target.closest('[data-tf]'); if(tfb){ S.tf=tfb.dataset.tf; try{ localStorage.setItem('painel-tf',S.tf); }catch{} render(); return; }
+  const fs=e.target.closest('[data-fibscore]'); if(fs){ const x=sgDe(S.tk); const f=x&&x.t&&x.t.fib; if(f){ S.tf='m'; S.modo='preco'; S.ferr='fibo'; S.fib[S.tk+'|preco']={a:f.b,b:f.a}; const ini=+f.de.slice(0,4), anos=new Date().getFullYear()-ini+1; S.range=anos<=1?'1':anos<=5?'5':anos<=10?'10':anos<=20?'20':'max'; render(); setTimeout(()=>{ const c=$('#ch-hist'); if(c) c.scrollIntoView({behavior:'smooth',block:'center'}); },50); } return; }
   const fb=e.target.closest('[data-ferr]'); if(fb){ S.ferr=fb.dataset.ferr; render(); return; }
   const gb=e.target.closest('[data-graf]'); if(gb){ S.graf=gb.dataset.graf; try{ localStorage.setItem('painel-graf',S.graf); }catch{} render(); return; }
   const b=e.target.closest('[data-smodo],[data-add],[data-rm],[data-iguais],[data-ha],[data-todas],[data-tab],[data-open],[data-sort],[data-preset],[data-range],[data-modo],[data-simular],[data-act]');
@@ -1268,7 +1329,7 @@ document.addEventListener('click',e=>{
   else if(d.open) openTk(d.open);
   else if(d.sort){ S.sort = S.sort.k===d.sort ? {k:d.sort,d:-S.sort.d} : {k:d.sort,d:['ticker','setor'].includes(d.sort)?1:-1}; render(); }
   else if(d.preset){ const p=PRESETS[d.preset]; S.f={mercado:S.f.mercado||'',setor:'',tipo:'',plMin:'',plMax:'',dyMin:'',roeMin:'',dlMax:'',liqMin:'',soPreco:S.f.soPreco,semBanco:false,pvpMax:null,...p}; render(); }
-  else if(d.range){ S.range=d.range; render(); }
+  else if(d.range){ if(S.tf==='m') S.range=d.range; else S.rangeTf[S.tf]=d.range; render(); }
   else if(d.modo){ S.modo=d.modo; render(); }
   else if(d.simular){ S.sim.tk=d.simular; S.sim.modo='uma'; setTab('simulador'); }
   else if(d.act==='sim') readSim();
@@ -1310,6 +1371,7 @@ function aplicaTema(t,redesenha){
   try{ localStorage.setItem('painel-tema',t); }catch{}
   if(redesenha&&S.rows.length) render();   // gráficos pegam as cores do tema na hora de desenhar
 }
+try{ const t=localStorage.getItem('painel-tf'); if(['m','w','d'].includes(t)) S.tf=t; }catch{}
 try{ const g=localStorage.getItem('painel-graf'); if(g==='candle'||g==='linha') S.graf=g; }catch{}
 let temaAtual='sistema'; try{ temaAtual=localStorage.getItem('painel-tema')||'sistema'; }catch{}
 if(!TEMAS.includes(temaAtual)) temaAtual='sistema';
