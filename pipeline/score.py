@@ -204,15 +204,18 @@ def _candle(o, h, l, c):
     return corpo, faixa, sup, inf
 
 
-def _padroes_candle(O, H, L, C, i):
-    """Padrões do mês i olhando a tendência dos 6 meses anteriores."""
+def _padroes_candle(O, H, L, C, i, lim=0.08):
+    """Padrões do candle i olhando a tendência dos 6 candles anteriores.
+    lim = quanto precisa ter caído ou subido antes: 8% no mensal, 5% no semanal, 3% no diário."""
     out = []
     if i < 6 or not all(_ok(v) and v > 0 for v in (O[i], H[i], L[i], C[i], O[i - 1], C[i - 1])):
         return out
     if L[i] > min(O[i], C[i]) * 1.001 or H[i] < max(O[i], C[i]) * 0.999:
         return out  # máxima/mínima incoerentes (dado ruim do Yahoo)
-    caiu = C[i - 1] < C[i - 6] * 0.92
-    subiu = C[i - 1] > C[i - 6] * 1.08
+    if not (_ok(C[i - 6]) and C[i - 6] > 0):
+        return out
+    caiu = C[i - 1] < C[i - 6] * (1 - lim)
+    subiu = C[i - 1] > C[i - 6] * (1 + lim)
     corpo, faixa, sup, inf = _candle(O[i], H[i], L[i], C[i])
     if corpo <= faixa * 0.35 and inf >= 2 * max(corpo, faixa * 0.05) and sup <= faixa * 0.15:
         if caiu:
@@ -597,3 +600,35 @@ def calcular(linhas, hist, ranking, hoje: dt.date, bt=None):
     if bt:
         bt_resumo = {k: v for k, v in bt.items()}
     return {"gerado": hoje.isoformat(), "backtest": bt_resumo, "dados": out}
+
+
+# ------------------------------------------------------------------ candles diários e semanais
+def backtest_candles(series: dict, lim: float, horizonte: int) -> dict | None:
+    """Mesmo teste do mensal, para os padrões de candle no diário ou no semanal:
+    o que o preço fez nos `horizonte` candles seguintes a cada padrão."""
+    base, por = [], {}
+    for s_ in series.values():
+        O, H, L, C = s_.get("o"), s_.get("h"), s_.get("l"), s_.get("c")
+        if not (O and H and L and C) or len(C) < 30:
+            continue
+        for i in range(6, len(C) - horizonte):
+            if not (_ok(C[i]) and C[i] > 0 and _ok(C[i + horizonte])):
+                continue
+            r = C[i + horizonte] / C[i] - 1
+            if r > 1.5 or r < -0.7:
+                continue
+            base.append(r)
+            for nome, tipo, _ in _padroes_candle(O, H, L, C, i, lim):
+                por.setdefault(nome, (tipo, []))[1].append(r)
+    if len(base) < 1000:
+        return None
+
+    def resumo(rs):
+        rs = sorted(rs)
+        return {"n": len(rs), "media": round(sum(rs) / len(rs), 4), "mediana": round(rs[len(rs) // 2], 4),
+                "positivos": round(sum(1 for x in rs if x > 0) / len(rs), 4)}
+    out = {"horizonte": horizonte, "base": resumo(base), "sinais": {}}
+    for nome, (tipo, rs) in por.items():
+        if len(rs) >= 30:
+            out["sinais"][nome] = {**resumo(rs), "livro": tipo}
+    return out

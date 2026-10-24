@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import fundamentos as F  # noqa: E402
 import historico as H  # noqa: E402
 import score as SC  # noqa: E402
+import diario as DI  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 SAIDA = RAIZ / "docs" / "data"
@@ -146,7 +147,8 @@ def cotacoes(tickers: list[str], sufixo: str = ".SA") -> tuple[dict, dict]:
             for col, k in (("Open", "o"), ("High", "h"), ("Low", "l")):
                 if col in mm:
                     serie = mm[col].reindex(mm.index)
-                    hist[t][k] = [round(float(x), 4) if pd.notna(x) else None for x in serie]
+                    # máxima/mínima zerada (mês em andamento no Yahoo) vira vazio; a página usa o corpo do candle
+                    hist[t][k] = [round(float(x), 4) if pd.notna(x) and float(x) > 0 else None for x in serie]
             if "Stock Splits" in mm:
                 sp = mm["Stock Splits"].fillna(0)
                 hist[t]["sp"] = [[k.strftime("%Y-%m"), round(float(x), 4)] for k, x in sp.items() if x and float(x) != 1.0]
@@ -454,6 +456,29 @@ def main():
     except Exception as e:  # noqa: BLE001
         log("trimestres falharam:", e)
 
+    # --- candles diários e semanais (gráfico da ficha) e o teste dos padrões nesses prazos
+    curto = {}
+    if not a.sem_precos and not a.precos_json:
+        try:
+            inv_idx = {v[0]: k for k, v in INDICES.items()}
+            simb = {}
+            for r in linhas:
+                t = r["ticker"]
+                if r.get("setor") == "Índice":
+                    if t in inv_idx:
+                        simb[t] = inv_idx[t]
+                elif (r.get("mercado") or "Brasil") == "Brasil":
+                    simb[t] = t + ".SA"
+                else:
+                    simb[t] = t
+            dia, sem = DI.baixar(simb, SAIDA / "d", log)
+            log("candles diários:", len(dia), "ativos; semanais:", len(sem))
+            bt_d = SC.backtest_candles(dia, 0.03, 10)
+            bt_w = SC.backtest_candles(sem, 0.05, 8)
+            curto = {"d": bt_d, "w": bt_w}
+        except Exception as e:  # noqa: BLE001
+            log("candles diários falharam, seguindo sem eles:", e)
+
     # --- score técnico + fundamentalista, com pesos calibrados pelo backtest
     try:
         h_all = hist if hist else _ler_hist()
@@ -463,6 +488,7 @@ def main():
             rk_atual = {}
         bt = SC.backtest(h_all)
         sc = SC.calcular(linhas, h_all, rk_atual, HOJE, bt)
+        sc["curto"] = curto
         (SAIDA / "sinais.json").write_text(json.dumps(sc, ensure_ascii=False, separators=(",", ":")))
         log("sinais:", len(sc["dados"]), "ativos; backtest com", (bt or {}).get("base", {}).get("n"), "meses")
     except Exception as e:  # noqa: BLE001
