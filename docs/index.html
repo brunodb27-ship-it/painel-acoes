@@ -1827,8 +1827,8 @@ function opLeitura(t,tipo){
     if(f>=55) return {txt:'Favorável',cls:'bom',por:`Empresa boa (fundamentos ${f}) e gráfico sem queda forte (técnica ${tc}). No teste, esse grupo foi o que mais rendeu vendendo put: se for exercido, você compra uma ação que já queria ter.`};
     return {txt:'Neutro',cls:'',por:`Fundamentos medianos (${f}) e técnica ${tc}. No teste, esse grupo ficou perto do zero a zero além do CDI.`};
   }
-  if(tc>=65) return {txt:'Cuidado',cls:'aviso',por:`Gráfico forte (nota técnica ${tc}). No teste, essas ações subiram em média 2% ao mês: a call foi exercida mais vezes e você perde a alta. Venda coberta rendeu menos que só segurar a ação.`};
-  if(tc<40) return {txt:'Cuidado',cls:'aviso',por:`Gráfico fraco (nota técnica ${tc}). No teste, vender call nesse grupo empatou ou perdeu um pouco: são ações que costumam dar repiques fortes.`};
+  if(tc>=65) return {txt:'Cuidado',cls:'aviso',por:`Gráfico forte (nota técnica ${tc}). No teste, essas ações subiram em média 1,8% ao mês: a call foi exercida mais vezes e você perde a alta. Venda coberta rendeu menos que só segurar a ação.`};
+  if(tc<40) return {txt:'Neutro',cls:'',por:`Gráfico fraco (nota técnica ${tc}). No teste, vender call nesse grupo deu resultado misto: ganhou um pouco em alguns períodos e perdeu em outros, porque são ações que às vezes dão repiques fortes.`};
   return {txt:'Favorável',cls:'bom',por:`Gráfico neutro (nota técnica ${tc}): a ação tende a andar de lado. No teste, foi o melhor momento para venda coberta.`};
 }
 function opDefaults(){
@@ -1856,15 +1856,15 @@ function vOpcoes(){
    <p class="note">Material de estudo, não é recomendação. O prêmio real depende de quem está comprando e vendendo na hora: opções longe do preço atual ou de vencimentos distantes costumam ter pouco negócio. Ganho com opções paga 15% de imposto (sem a isenção de R$ 20 mil das ações). Cada opção corresponde a 100 ações.</p>`;
 }
 function opBacktestCard(){
-  return `<section class="card"><div class="card-h"><h2>O que o teste de 5 anos mostrou</h2><span class="note">out/2021 a out/2026 · 32 ações com opções · uma operação por mês</span></div><div class="card-b">
+  return `<section class="card"><div class="card-h"><h2>O que o teste de 5 anos mostrou</h2><span class="note">out/2021 a set/2026 · 32 ações com opções · uma operação por mês</span></div><div class="card-b">
    <p class="note" style="margin:0 0 10px">Sem o histórico real dos preços das opções, o prêmio de cada mês foi estimado pela mesma fórmula desta calculadora. O resultado depende de uma coisa que não dá para medir aqui: quanto o mercado cobra a mais que a volatilidade que de fato acontece. Por isso aparecem três cenários.</p>
    <div class="tbl-wrap"><table><thead><tr><th class="l">Estratégia (carteira com as 32 ações)</th><th>Sem opção</th><th>Opção a preço justo${info('O mercado paga exatamente a volatilidade que aconteceu. Não existe vantagem para quem vende: o ganho vem só da sorte.')}</th><th>Cenário do meio${info('O mercado cobra 10% a mais de volatilidade do que acontece depois, e você perde 10% do prêmio no spread entre compra e venda. É o mais próximo do que estudos costumam encontrar.')}</th><th>Otimista${info('O mercado cobra 25% a mais de volatilidade. Acontece em períodos de medo, mas não dá para contar com isso sempre.')}</th></tr></thead><tbody>
-    <tr style="cursor:default"><td class="l">Venda coberta, CALL 8% acima, todo mês</td><td>+85%</td><td>+91%</td><td class="up">+105%</td><td class="up">+162%</td></tr>
-    <tr style="cursor:default"><td class="l">Venda de PUT 5% abaixo, dinheiro no CDI</td><td>+81% <span class="muted">(só CDI)</span></td><td>+84%</td><td class="up">+98%</td><td class="up">+153%</td></tr>
+    <tr style="cursor:default"><td class="l">Venda coberta, CALL 8% acima, todo mês</td><td>+65%</td><td>+79%</td><td class="up">+92%</td><td class="up">+144%</td></tr>
+    <tr style="cursor:default"><td class="l">Venda de PUT 5% abaixo, dinheiro no CDI</td><td>+79% <span class="muted">(só CDI)</span></td><td>+80%</td><td class="up">+93%</td><td class="up">+146%</td></tr>
    </tbody></table></div>
    <ul class="note" style="margin:12px 0 0;padding-left:18px;display:grid;gap:6px">
-    <li><b>A preço justo, opção quase não muda o resultado.</b> O ganho de quem vende opção vem do mercado pagar caro pelo seguro. No cenário do meio, a venda coberta somou cerca de 2 pontos por ano à carteira, e a put, uns 1,5 ponto por ano acima do CDI.</li>
-    <li><b>O score ajuda a escolher a ação, não a data.</b> Vender put em empresas com fundamentos abaixo de 40 perdeu cerca de 1% ao mês; com fundamentos acima de 55, ganhou de 0,3% a 0,4% ao mês acima do CDI. Vender call em ações com gráfico forte (técnica 65 ou mais) rendeu menos que só segurar, porque elas sobem e a call é exercida.</li>
+    <li><b>A preço justo, opção quase não muda o resultado.</b> O ganho de quem vende opção vem do mercado pagar caro pelo seguro. No cenário do meio, a venda coberta somou de 2 a 3,5 pontos por ano à carteira (depende do período), e a put, cerca de 1,5 ponto por ano acima do CDI. O prêmio parece alto (1,5% ao mês), mas quase 85% dele volta quando a opção é exercida.</li>
+    <li><b>O score ajuda a escolher a ação, não a data.</b> Vender put em empresas com fundamentos abaixo de 40 perdeu cerca de 1% ao mês; com fundamentos acima de 55, ganhou de 0,2% a 0,4% ao mês acima do CDI. Vender call em ações com gráfico forte (técnica 65 ou mais) rendeu menos que só segurar, porque elas sobem e a call é exercida.</li>
     <li><b>A put foi a mais tranquila:</b> pior queda de 7% no caminho, contra 13% da venda coberta. Mas no teste o risco estava espalhado em 32 ações; com uma ou duas, as quedas são bem maiores.</li>
     <li><b>Venda coberta conflita com o "comprar e segurar".</b> Se a call for exercida, você vende a ação, paga imposto sobre o lucro dela e precisa recomprar. Faça só em ações que você aceitaria vender naquele preço.</li>
    </ul></div></section>`;
