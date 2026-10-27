@@ -265,6 +265,7 @@ table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
     <button role="tab" data-tab="carteira">Carteira</button>
     <button role="tab" data-tab="simulador">Simulador</button>
     <button role="tab" data-tab="liberdade">Liberdade</button>
+    <button role="tab" data-tab="opcoes">Opções</button>
   </nav>
   <button class="btn" data-todas="1">Todas as ações</button>
   <span class="stamp"><span id="stamp">carregando…</span> <button type="button" class="qbtn" id="qbtn" hidden></button></span>
@@ -360,13 +361,14 @@ async function loadHist(t){
 function setTab(t){ S.tab=t; document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t)); render(); }
 function render(){
   Object.values(S.charts).forEach(c=>c&&c.destroy()); S.charts={};
-  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais,liberdade:vLib,carteira:vCarteira}[S.tab]; $('#app').innerHTML=(S.qualAberto?vQual():'')+v(); after();
+  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais,liberdade:vLib,carteira:vCarteira,opcoes:vOpcoes}[S.tab]; $('#app').innerHTML=(S.qualAberto?vQual():'')+v(); after();
 }
 function after(){
   if(S.tab==='acao') drawAcao();
   if(S.tab==='simulador') runSim();
   if(S.tab==='liberdade') runLib();
   if(S.tab==='carteira') drawCarteira();
+  if(S.tab==='opcoes') runOp();
   if(S.tab==='ranking'&&!S.rank&&!S.rankErr) loadRank();
   if(S.sinais===undefined&&!S._sgLoading){ S._sgLoading=true; loadSinais().then(()=>{ if(['sinais','acao','buscador'].includes(S.tab)) render(); }); }
 }
@@ -1767,6 +1769,201 @@ document.addEventListener('change',e=>{
 });
 function alertaCw(m){ S.mcErro=m; render(); }
 document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.closest&&e.target.closest('.cw-form')){ e.preventDefault(); $('[data-cw="salvar"]')?.click(); } if(e.key==='Enter'&&(e.target.id==='cw-anos'||e.target.id==='cw-aporte')) e.target.blur(); });
+
+// ===================== opções: calculadora Black-Scholes =====================
+// Papéis com opções negociadas na B3. 'alta' = séries mensais com bastante negócio; 'media' = negocia, mas confira o volume no home broker.
+const OP_LISTA=[['PETR4','alta'],['VALE3','alta'],['BOVA11','alta'],['ITUB4','alta'],['BBDC4','alta'],['BBAS3','alta'],['B3SA3','alta'],['PRIO3','alta'],['ABEV3','alta'],
+  ['MGLU3','media'],['GGBR4','media'],['SUZB3','media'],['WEGE3','media'],['ITSA4','media'],['USIM5','media'],['CMIG4','media'],['CSNA3','media'],['ELET3','media'],['BBSE3','media'],
+  ['RENT3','media'],['LREN3','media'],['EQTL3','media'],['VIVT3','media'],['RADL3','media'],['HAPV3','media'],['CSAN3','media'],['KLBN11','media'],['SBSP3','media'],['TIMS3','media'],
+  ['RAIL3','media'],['COGN3','media'],['GOAU4','media'],['EMBR3','media'],['BRAP4','media'],['PETR3','media']];
+const OP_LIQ=Object.fromEntries(OP_LISTA);
+S.op={tk:'PETR4',tipo:'call',K:null,venc:null,vol:null,volAuto:true,taxa:null,qtd:100,mkt:'',ideias:null};
+// distribuição normal acumulada (erro < 1e-7)
+function opN(x){ const t=1/(1+0.2316419*Math.abs(x)), d=0.3989422804014327*Math.exp(-x*x/2);
+  const p=d*t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429)))); return x>0?1-p:p; }
+function opBS(S0,K,T,r,s,tipo){
+  if(!(S0>0&&K>0&&T>0&&s>0)) return null;
+  const d1=(Math.log(S0/K)+(r+s*s/2)*T)/(s*Math.sqrt(T)), d2=d1-s*Math.sqrt(T);
+  if(tipo==='call') return {p:S0*opN(d1)-K*Math.exp(-r*T)*opN(d2),delta:opN(d1),prob:opN(d2)};
+  return {p:K*Math.exp(-r*T)*opN(-d2)-S0*opN(-d1),delta:opN(d1)-1,prob:opN(-d2)};
+}
+function opIV(preco,S0,K,T,r,tipo){ let lo=0.01,hi=4; const f=s=>opBS(S0,K,T,r,s,tipo).p-preco;
+  if(!(preco>0)||f(lo)>0||f(hi)<0) return null; for(let i=0;i<80;i++){ const m=(lo+hi)/2; if(f(m)>0) hi=m; else lo=m; } return (lo+hi)/2; }
+// vencimentos mensais da B3: terceira sexta-feira do mês
+function opTerceiraSexta(a,m){ const d=new Date(a,m,1); const add=(5-d.getDay()+7)%7; return new Date(a,m,1+add+14); }
+function opVencs(n=4){ const hoje=new Date(); hoje.setHours(0,0,0,0); const out=[]; let a=hoje.getFullYear(), m=hoje.getMonth();
+  while(out.length<n){ const v=opTerceiraSexta(a,m); if(v>hoje) out.push(v); m++; if(m>11){ m=0; a++; } } return out; }
+const opISO=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const opBR=iso=>iso.split('-').reverse().join('/');
+function opDU(iso){ const fim=new Date(iso+'T00:00:00'), d=new Date(); d.setHours(0,0,0,0); let n=0;
+  while(d<fim){ d.setDate(d.getDate()+1); const w=d.getDay(); if(w&&w<6) n++; } return n; }   // dias úteis (sem contar feriados)
+function opCDI(){ const c=S.macro&&S.macro.cdi; if(!c) return null; const atual=new Date().toISOString().slice(0,7);
+  const ks=Object.keys(c).sort().filter(k=>k<atual).slice(-3); if(!ks.length) return null;
+  const f=ks.reduce((a,k)=>a*(1+c[k]/100),1); return Math.pow(f,12/ks.length)-1; }
+function opSerie(t){ const x=S.dia[t]; return x&&x.d&&x.d.c&&x.d.c.length>30?x.d:null; }
+function opVol(t,n){ const d=opSerie(t); if(!d) return null; const c=d.c.slice(-(n+1)).filter(v=>v>0); if(c.length<15) return null;
+  const r=[]; for(let i=1;i<c.length;i++) r.push(Math.log(c[i]/c[i-1])); const mu=r.reduce((a,b)=>a+b,0)/r.length;
+  return Math.sqrt(r.reduce((a,b)=>a+(b-mu)**2,0)/(r.length-1)*252); }
+function opPreco(t){ const d=opSerie(t); return d?{p:d.c.at(-1),dt:d.t.at(-1)}:null; }
+// leitura do score, a partir do backtest de 5 anos (veja o quadro no fim da aba)
+function opLeitura(t,tipo){
+  const x=sgDe(t); if(!x||!x.f||!x.t) return {txt:'Sem score',cls:'',por:'Esta ação não tem nota no painel. A calculadora funciona, mas sem a leitura do score.'};
+  const f=x.f.score, tc=x.t.score;
+  if(tipo==='put'){
+    if(f<40) return {txt:'Evite',cls:'ruim',por:`Fundamentos fracos (nota ${f}). No teste de 5 anos, vender put em ações com nota fundamentalista abaixo de 40 perdeu cerca de 1% ao mês: a ação caiu e a put foi exercida.`};
+    if(tc<40) return {txt:'Cuidado',cls:'aviso',por:`Gráfico em queda (nota técnica ${tc}). No teste, vender put com técnica abaixo de 40 deu prejuízo médio: a chance de exercício subiu para 36%.`};
+    if(f>=55) return {txt:'Favorável',cls:'bom',por:`Empresa boa (fundamentos ${f}) e gráfico sem queda forte (técnica ${tc}). No teste, esse grupo foi o que mais rendeu vendendo put: se for exercido, você compra uma ação que já queria ter.`};
+    return {txt:'Neutro',cls:'',por:`Fundamentos medianos (${f}) e técnica ${tc}. No teste, esse grupo ficou perto do zero a zero além do CDI.`};
+  }
+  if(tc>=65) return {txt:'Cuidado',cls:'aviso',por:`Gráfico forte (nota técnica ${tc}). No teste, essas ações subiram em média 2% ao mês: a call foi exercida mais vezes e você perde a alta. Venda coberta rendeu menos que só segurar a ação.`};
+  if(tc<40) return {txt:'Cuidado',cls:'aviso',por:`Gráfico fraco (nota técnica ${tc}). No teste, vender call nesse grupo empatou ou perdeu um pouco: são ações que costumam dar repiques fortes.`};
+  return {txt:'Favorável',cls:'bom',por:`Gráfico neutro (nota técnica ${tc}): a ação tende a andar de lado. No teste, foi o melhor momento para venda coberta.`};
+}
+function opDefaults(){
+  const O=S.op, pr=opPreco(O.tk); if(!pr) return;
+  if(!O.venc){ const vs=opVencs(4); O.venc=opISO(opDU(opISO(vs[0]))>=10?vs[0]:vs[1]); }
+  if(O.volAuto||!ok(O.vol)){ const v=opVol(O.tk,63); if(ok(v)) O.vol=+(v*100).toFixed(1); }
+  if(!ok(O.taxa)){ const c=opCDI(); O.taxa=ok(c)?+(c*100).toFixed(2):14; }
+  if(!ok(O.K)) O.K=opArred(pr.p*(O.tipo==='call'?1.08:0.95));
+}
+const opArred=v=>v>=50?Math.round(v):v>=10?Math.round(v*4)/4:Math.round(v*20)/20;   // strikes da B3 andam de degrau em degrau
+function opCalc(t,tipo,K,venc,volPct,taxaPct){
+  const pr=opPreco(t); if(!pr||!ok(K)||!venc) return null;
+  const du=opDU(venc), T=du/252, r=Math.log(1+taxaPct/100), s=volPct/100, b=opBS(pr.p,K,T,r,s,tipo); if(!b) return null;
+  const base=tipo==='call'?pr.p:K, ret=b.p/base, meses=du/21, cdiPer=Math.pow(1+taxaPct/100,T)-1;
+  return {...b,S0:pr.p,dt:pr.dt,K,du,T,r,s,ret,retMes:Math.pow(1+ret,1/Math.max(meses,0.05))-1,cdiPer,dist:K/pr.p-1};
+}
+
+function vOpcoes(){
+  return `<section class="card"><div class="card-h"><h2>Opções · venda coberta e venda de put${info('Calculadora para estimar quanto vale uma opção antes de vender.\n\nVenda coberta de CALL: você já tem a ação e vende o direito de alguém comprá-la de você pelo strike até o vencimento. Recebe o prêmio na hora. Se a ação passar do strike, você vende por ele.\n\nVenda de PUT: você deixa o dinheiro reservado e vende o direito de alguém te vender a ação pelo strike. Recebe o prêmio na hora. Se a ação cair abaixo do strike, você compra por ele.\n\nO preço é estimado pela fórmula de Black-Scholes com a volatilidade do passado. O preço real no home broker pode ser diferente.')}</h2><span class="note">estimativa teórica · confira o preço real no home broker</span></div>
+    <div id="op-calc"><div class="card-b"><div class="empty">Carregando preços e volatilidade…</div></div></div></section>
+   <div id="op-res"></div>
+   <section class="card"><div class="card-h"><h2>Ideias para o próximo vencimento${info('Para cada ação com opções na B3: quanto renderia vender uma CALL 8% acima do preço ou uma PUT 5% abaixo, no próximo vencimento mensal, e o que o score diz sobre o momento.\n\nForam as distâncias que melhor funcionaram no teste de 5 anos.\n\nClique numa linha para abrir na calculadora.')}</h2><span class="note" id="op-ideias-sub"></span></div>
+    <div class="card-b" id="op-ideias"><div class="empty">Carregando…</div></div></section>
+   ${opBacktestCard()}
+   <p class="note">Material de estudo, não é recomendação. O prêmio real depende de quem está comprando e vendendo na hora: opções longe do preço atual ou de vencimentos distantes costumam ter pouco negócio. Ganho com opções paga 15% de imposto (sem a isenção de R$ 20 mil das ações). Cada opção corresponde a 100 ações.</p>`;
+}
+function opBacktestCard(){
+  return `<section class="card"><div class="card-h"><h2>O que o teste de 5 anos mostrou</h2><span class="note">out/2021 a out/2026 · 32 ações com opções · uma operação por mês</span></div><div class="card-b">
+   <p class="note" style="margin:0 0 10px">Sem o histórico real dos preços das opções, o prêmio de cada mês foi estimado pela mesma fórmula desta calculadora. O resultado depende de uma coisa que não dá para medir aqui: quanto o mercado cobra a mais que a volatilidade que de fato acontece. Por isso aparecem três cenários.</p>
+   <div class="tbl-wrap"><table><thead><tr><th class="l">Estratégia (carteira com as 32 ações)</th><th>Sem opção</th><th>Opção a preço justo${info('O mercado paga exatamente a volatilidade que aconteceu. Não existe vantagem para quem vende: o ganho vem só da sorte.')}</th><th>Cenário do meio${info('O mercado cobra 10% a mais de volatilidade do que acontece depois, e você perde 10% do prêmio no spread entre compra e venda. É o mais próximo do que estudos costumam encontrar.')}</th><th>Otimista${info('O mercado cobra 25% a mais de volatilidade. Acontece em períodos de medo, mas não dá para contar com isso sempre.')}</th></tr></thead><tbody>
+    <tr style="cursor:default"><td class="l">Venda coberta, CALL 8% acima, todo mês</td><td>+85%</td><td>+91%</td><td class="up">+105%</td><td class="up">+162%</td></tr>
+    <tr style="cursor:default"><td class="l">Venda de PUT 5% abaixo, dinheiro no CDI</td><td>+81% <span class="muted">(só CDI)</span></td><td>+84%</td><td class="up">+98%</td><td class="up">+153%</td></tr>
+   </tbody></table></div>
+   <ul class="note" style="margin:12px 0 0;padding-left:18px;display:grid;gap:6px">
+    <li><b>A preço justo, opção quase não muda o resultado.</b> O ganho de quem vende opção vem do mercado pagar caro pelo seguro. No cenário do meio, a venda coberta somou cerca de 2 pontos por ano à carteira, e a put, uns 1,5 ponto por ano acima do CDI.</li>
+    <li><b>O score ajuda a escolher a ação, não a data.</b> Vender put em empresas com fundamentos abaixo de 40 perdeu cerca de 1% ao mês; com fundamentos acima de 55, ganhou de 0,3% a 0,4% ao mês acima do CDI. Vender call em ações com gráfico forte (técnica 65 ou mais) rendeu menos que só segurar, porque elas sobem e a call é exercida.</li>
+    <li><b>A put foi a mais tranquila:</b> pior queda de 7% no caminho, contra 13% da venda coberta. Mas no teste o risco estava espalhado em 32 ações; com uma ou duas, as quedas são bem maiores.</li>
+    <li><b>Venda coberta conflita com o "comprar e segurar".</b> Se a call for exercida, você vende a ação, paga imposto sobre o lucro dela e precisa recomprar. Faça só em ações que você aceitaria vender naquele preço.</li>
+   </ul></div></section>`;
+}
+async function runOp(){
+  const O=S.op; if(S.tab!=='opcoes') return;
+  await Promise.all([loadDia(O.tk),loadSinais(),S.macro?null:getJSON('data/macro.json').then(m=>S.macro=m).catch(()=>{})]);
+  if(S.tab!=='opcoes') return;
+  opDefaults(); opDesenha();
+  if(!O.ideias){ O.ideias='carregando'; opIdeias(); } else if(O.ideias!=='carregando') opDesenhaIdeias();
+}
+function opDesenha(){
+  const box=$('#op-calc'); if(!box) return; const O=S.op, pr=opPreco(O.tk);
+  const vs=opVencs(5).map(opISO); if(O.venc&&!vs.includes(O.venc)) vs.unshift(O.venc);
+  const v1=opVol(O.tk,21), v3=opVol(O.tk,63), v12=opVol(O.tk,252);
+  const dists=O.tipo==='call'?[0.03,0.05,0.08,0.10]:[-0.03,-0.05,-0.08,-0.10];
+  box.innerHTML=`<div class="card-b sim-form op-form" style="align-items:start">
+    <div class="f"><label for="op-tk">Ação${info('Ações e ETFs com opções negociadas na B3. Você pode digitar outra, mas confira se ela tem opções com volume.')}</label><input class="inp" id="op-tk" list="op-dl" value="${esc(O.tk)}" autocomplete="off"><datalist id="op-dl">${OP_LISTA.map(([t])=>`<option value="${t}">`).join('')}</datalist></div>
+    <div class="f"><label for="op-tipo">Operação${info('Venda coberta de CALL: você tem as ações e aceita vendê-las pelo strike.\n\nVenda de PUT: você tem o dinheiro reservado e aceita comprar as ações pelo strike.')}</label><select class="inp" id="op-tipo"><option value="call" ${O.tipo==='call'?'selected':''}>Vender CALL coberta</option><option value="put" ${O.tipo==='put'?'selected':''}>Vender PUT</option></select></div>
+    <div class="f"><label for="op-venc">Vencimento${info('As opções mensais da B3 vencem na terceira sexta-feira do mês. A conta usa os dias úteis até lá, sem descontar feriados.')}</label><select class="inp" id="op-venc">${vs.map(v=>`<option value="${v}" ${v===O.venc?'selected':''}>${opBR(v).slice(0,6)+v.slice(2,4)} · ${opDU(v)} d.u.</option>`).join('')}</select></div>
+    <div class="f"><label for="op-k">Strike (R$)${info(O.tipo==='call'?'Preço pelo qual você aceita vender a ação. Quanto mais acima do preço de hoje, menor o prêmio e menor a chance de ser exercido.':'Preço pelo qual você aceita comprar a ação. Quanto mais abaixo do preço de hoje, menor o prêmio e menor a chance de ser exercido.')}</label><input class="inp" id="op-k" inputmode="decimal" value="${ok(O.K)?fN(O.K,2):''}">
+      <div class="seg" style="margin-top:6px">${dists.map(d=>`<button type="button" data-opdist="${d}" aria-pressed="${pr&&ok(O.K)&&Math.abs(O.K/pr.p-1-d)<0.006}">${d>0?'+':''}${Math.round(d*100)}%</button>`).join('')}</div></div>
+    <div class="f"><label for="op-vol">Volatilidade (% ao ano)${info('Quanto a ação costuma oscilar. É o número que mais pesa no preço da opção.\n\nVem preenchida com a volatilidade dos últimos 3 meses. O mercado costuma cobrar um pouco mais que isso.\n\nSe você souber o preço real da opção, preencha "Prêmio no home broker" que a calculadora descobre a volatilidade que o mercado está usando.')}</label><input class="inp" id="op-vol" inputmode="decimal" value="${ok(O.vol)?fN(O.vol,1):''}">
+      <span class="note" style="margin-top:4px">1 mês ${fP(v1,0)} · 3 meses ${fP(v3,0)} · 1 ano ${fP(v12,0)}</span></div>
+    <div class="f"><label for="op-taxa">Juros (% ao ano)${info('Taxa livre de risco usada na fórmula. Vem com o CDI dos últimos 3 meses, anualizado.')}</label><input class="inp" id="op-taxa" inputmode="decimal" value="${ok(O.taxa)?fN(O.taxa,2):''}"></div>
+    <div class="f"><label for="op-qtd">Quantidade de ações${info('Cada opção vale 100 ações. Para venda coberta você precisa ter essas ações; para a put, o dinheiro para comprá-las pelo strike.')}</label><input class="inp" id="op-qtd" inputmode="numeric" value="${O.qtd}"></div>
+    <div class="f"><label for="op-mkt">Prêmio no home broker (R$, opcional)${info('Se você achou a opção no home broker, digite o preço dela (o que pagam para comprar). A calculadora mostra a volatilidade que o mercado está cobrando e se o prêmio está caro ou barato perto da teoria.')}</label><input class="inp" id="op-mkt" inputmode="decimal" value="${esc(O.mkt)}" placeholder="ex.: 0,85"></div>
+   </div>
+   ${pr?`<p class="note" style="margin:0;padding:0 16px 14px">${esc(O.tk)} fechou em ${fR(pr.p)} no dia ${opBR(pr.dt)}. ${O.volAuto?'Volatilidade dos últimos 3 meses.':'Volatilidade digitada por você.'}</p>`:`<p class="note down" style="margin:0;padding:0 16px 14px">Não encontrei o histórico diário de ${esc(O.tk)}. Escolha uma ação da lista.</p>`}`;
+  opResultado();
+}
+function opResultado(){
+  const box=$('#op-res'); if(!box) return; const O=S.op;
+  const c=opCalc(O.tk,O.tipo,O.K,O.venc,O.vol,O.taxa);
+  if(S.charts.op){ S.charts.op.destroy(); S.charts.op=null; }
+  if(!c){ box.innerHTML=''; return; }
+  const q=Math.max(1,O.qtd||100), call=O.tipo==='call', L=opLeitura(O.tk,O.tipo), x=sgDe(O.tk);
+  const mkt=num(O.mkt), iv=ok(mkt)&&mkt>0?opIV(mkt,c.S0,c.K,c.T,c.r,O.tipo):null;
+  const premio=ok(mkt)&&mkt>0?mkt:c.p, fonte=ok(mkt)&&mkt>0?'do home broker':'teórico';
+  const ret=premio/(call?c.S0:c.K), retMes=Math.pow(1+ret,1/Math.max(c.du/21,0.05))-1;
+  const exercido=call?(c.K-c.S0+premio)/c.S0:(c.K-premio)/c.S0-1;
+  const prot=call?c.S0-premio:c.K-premio;
+  box.innerHTML=`<div style="display:grid;gap:18px">
+   <section class="kpis">
+    <div class="kpi"><span class="lab">Prêmio ${fonte}${info('Quanto você recebe na hora por ação vendendo a opção. Multiplique pela quantidade para ver o total.')}</span><span class="val">${fR(premio)}<small class="muted" style="font-size:12px"> /ação</small></span><span class="sub muted">${fR(premio*q)} no total (${fN(q,0)} ações)${ok(mkt)&&mkt>0?` · teoria: ${fR(c.p)}`:''}</span></div>
+    <div class="kpi"><span class="lab">Rende no período${info(call?'Prêmio dividido pelo preço da ação hoje: é o que a venda coberta acrescenta ao que a ação já rende.':'Prêmio dividido pelo strike (o dinheiro reservado). Esse dinheiro continua rendendo CDI enquanto isso, então o total é prêmio + CDI.')}</span><span class="val">${fP(ret,2)}</span><span class="sub muted">≈ ${fP(retMes,2)} ao mês · ${call?`CDI no período: ${fP(c.cdiPer,2)}`:`mais o CDI: ${fP(c.cdiPer,2)} → total ${fP(ret+c.cdiPer,2)}`}</span></div>
+    <div class="kpi"><span class="lab">Chance de ser exercido${info('Estimativa pela própria fórmula (probabilidade de a ação terminar além do strike no vencimento). É aproximada: vale como ordem de grandeza.\n\nDelta: quanto a opção muda de preço para cada R$ 1 da ação.')}</span><span class="val ${c.prob>0.4?'down':c.prob<0.2?'up':''}">${fP(c.prob,0)}</span><span class="sub muted">delta ${fN(c.delta,2)} · strike ${fP(c.dist,1,true)} do preço</span></div>
+    <div class="kpi"><span class="lab">${call?'Se for exercido':'Se for exercido'}${info(call?'Você vende a ação pelo strike e fica com o prêmio. O número é o ganho total sobre o preço de hoje, sem contar dividendos.':'Você compra a ação pelo strike, mas o prêmio já recebido baixa o custo. O número compara esse custo com o preço de hoje.')}</span><span class="val ${call?'up':''}">${call?fP(exercido,2,true):fR(c.K-premio)}</span><span class="sub muted">${call?`vende a ${fR(c.K)} + prêmio`:`custo por ação · ${fP(exercido,1,true)} vs. o preço de hoje`}</span></div>
+    ${call?`<div class="kpi"><span class="lab">Proteção na queda${info('O prêmio compensa uma queda da ação até este preço. Abaixo dele, você perde (como perderia sem a opção, só que um pouco menos).')}</span><span class="val">${fR(prot)}</span><span class="sub muted">${fP(prot/c.S0-1,1,true)} do preço de hoje</span></div>`
+     :`<div class="kpi"><span class="lab">Dinheiro reservado${info('Quanto precisa ficar parado na conta (de preferência rendendo CDI, em Tesouro Selic ou fundo DI aceito como garantia) para comprar as ações se a put for exercida.')}</span><span class="val">${fR(c.K*q)}</span><span class="sub muted">strike × ${fN(q,0)} ações · rende ${fR(c.K*q*c.cdiPer)} de CDI até o vencimento</span></div>`}
+    ${iv!=null?`<div class="kpi"><span class="lab">Volatilidade que o mercado cobra${info('A volatilidade que faz a fórmula chegar ao preço que você digitou. Se estiver bem acima da volatilidade histórica, a opção está "cara": bom para quem vende.')}</span><span class="val ${iv>c.s*1.05?'up':iv<c.s*0.95?'down':''}">${fP(iv,1)}</span><span class="sub muted">${iv>c.s*1.05?`acima da usada (${fP(c.s,1)}): prêmio caro, bom para quem vende`:iv<c.s*0.95?`abaixo da usada (${fP(c.s,1)}): prêmio barato, pense duas vezes`:`perto da usada (${fP(c.s,1)}): prêmio próximo da teoria`}</span></div>`:''}
+   </section>
+   <section class="card"><div class="card-h"><h2>Leitura do score · <span class="sglado ${L.cls}" style="font-size:15px">${esc(L.txt)}</span></h2>${x&&x.f&&x.t?`<span class="note">fundamentos ${x.f.score} · técnica ${x.t.score} · total ${x.total}</span>`:''}</div>
+    <div class="card-b"><p style="margin:0">${esc(L.por)}</p></div></section>
+   <section class="card"><div class="card-h"><h2>Resultado no vencimento</h2><span class="note">${fN(q,0)} ações · prêmio ${fonte}</span></div>
+    <div class="card-b"><div class="chart-box"><canvas id="ch-op" aria-label="Resultado no vencimento conforme o preço da ação"></canvas></div>
+    <div class="legend" style="margin-top:10px"><span><i style="background:var(--s1)"></i>${call?'Com a venda coberta':'Vendendo a put (prêmio + CDI)'}</span><span><i style="background:var(--s4)"></i>${call?'Só segurando a ação':'Comprando a ação hoje'}</span>${call?'':'<span><i style="background:var(--s3)"></i>Só o CDI</span>'}</div>
+    <p class="note" style="margin:8px 0 0">${call?'Acima do strike a linha fica reta: você vende pelo strike e não ganha a alta extra. Abaixo, o prêmio amortece a queda.':'Acima do strike você fica com o prêmio e o CDI. Abaixo, compra a ação pelo strike e o prejuízo começa depois do ponto de equilíbrio.'} Não inclui dividendos, custos nem imposto.</p></div></section></div>`;
+  if(window.Chart&&$('#ch-op')){
+    const xs=[], ys=[], alt=[], cdi=[]; for(let i=0;i<=60;i++){ const st=c.S0*(0.75+i*0.5/60); xs.push(st);
+      if(call){ ys.push(q*(Math.min(st,c.K)-c.S0+premio)); alt.push(q*(st-c.S0)); }
+      else { ys.push(q*(premio-Math.max(c.K-st,0)+c.K*c.cdiPer)); alt.push(q*(st-c.S0)); cdi.push(q*c.K*c.cdiPer); } }
+    const o=chartOpts(v=>fR(v)); o.plugins.tooltip.callbacks.title=i=>'Ação no vencimento: '+fR(xs[i[0].dataIndex]);
+    o.scales.x.ticks.callback=function(v){ return fR(xs[v]).replace(/,\d+$/,''); }; o.scales.x.ticks.maxRotation=0; o.scales.x.ticks.autoSkip=true; o.scales.x.ticks.maxTicksLimit=innerWidth<600?5:9;
+    const ds=[{label:call?'Com a venda coberta':'Vendendo a put',data:ys,borderColor:css('--s1'),borderWidth:2.4,pointRadius:0},
+      {label:call?'Só a ação':'Comprando a ação hoje',data:alt,borderColor:css('--s4'),borderWidth:1.4,borderDash:[5,4],pointRadius:0}];
+    if(!call) ds.push({label:'Só o CDI',data:cdi,borderColor:css('--s3'),borderWidth:1.2,borderDash:[2,3],pointRadius:0});
+    S.charts.op=new Chart($('#ch-op'),{type:'line',data:{labels:xs.map((_,i)=>i),datasets:ds},options:o});
+  }
+}
+async function opIdeias(){
+  const lst=OP_LISTA.map(([t])=>t); await Promise.all(lst.map(t=>loadDia(t)));
+  const vs=opVencs(4), venc=opISO(opDU(opISO(vs[0]))>=10?vs[0]:vs[1]), taxa=(opCDI()??0.14)*100, out=[];
+  for(const t of lst){ const pr=opPreco(t), v=opVol(t,63); if(!pr||!ok(v)) continue;
+    const c=opCalc(t,'call',opArred(pr.p*1.08),venc,v*100,taxa), p=opCalc(t,'put',opArred(pr.p*0.95),venc,v*100,taxa);
+    out.push({t,pr:pr.p,v,c,p,lc:opLeitura(t,'call'),lp:opLeitura(t,'put'),x:sgDe(t)}); }
+  S.op.ideias={venc,lin:out}; opDesenhaIdeias();
+}
+function opDesenhaIdeias(){
+  const box=$('#op-ideias'), I=S.op.ideias; if(!box||!I||I==='carregando') return;
+  const sub=$('#op-ideias-sub'); if(sub) sub.textContent=`vencimento ${opBR(I.venc)} · ${opDU(I.venc)} dias úteis · volatilidade de 3 meses`;
+  const ord={bom:0,'':1,aviso:2,ruim:3}, lin=[...I.lin].sort((a,b)=>(ord[a.lp.cls]-ord[b.lp.cls])||(b.p.retMes-a.p.retMes));
+  const sel=t=>t===S.op.tk?' style="background:var(--accent-soft)"':'';
+  box.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th class="l">Ação</th><th>Preço</th><th>Vol. 3m</th><th class="l">Opções${info('Alta: séries mensais com muito negócio. Média: negocia, mas confira o volume do strike no home broker antes de vender.')}</th><th>Score F / T</th>
+    <th>CALL +8%<br><small class="muted">prêmio/mês</small></th><th class="l">Leitura call</th><th>PUT −5%<br><small class="muted">prêmio/mês</small></th><th class="l">Leitura put</th></tr></thead><tbody>
+    ${lin.map(r=>`<tr data-optk="${r.t}"${sel(r.t)}><td class="l"><span class="tk">${r.t}</span></td><td>${fR(r.pr)}</td><td>${fP(r.v,0)}</td><td class="l">${OP_LIQ[r.t]==='alta'?'<span class="sglado bom">Alta</span>':'<span class="sglado">Média</span>'}</td>
+      <td>${r.x&&r.x.f&&r.x.t?`${r.x.f.score} / ${r.x.t.score}`:'—'}</td><td>${fP(r.c.retMes,2)}</td><td class="l"><span class="sglado ${r.lc.cls}" title="${esc(r.lc.por)}">${esc(r.lc.txt)}</span></td>
+      <td>${fP(r.p.retMes,2)}</td><td class="l"><span class="sglado ${r.lp.cls}" title="${esc(r.lp.por)}">${esc(r.lp.txt)}</span></td></tr>`).join('')}
+   </tbody></table></div>
+   <p class="note" style="margin:10px 0 0">Ordenado pela leitura da put e depois pelo prêmio. "Prêmio/mês" é o prêmio teórico dividido pelo preço (call) ou pelo strike (put), convertido para um mês; na put, o CDI vem por cima. Prêmio alto quase sempre significa ação mais arriscada, não oportunidade.</p>`;
+}
+document.addEventListener('click',e=>{
+  if(S.tab!=='opcoes') return;
+  const db=e.target.closest('[data-opdist]'); if(db){ opLe(); const pr=opPreco(S.op.tk); if(pr){ S.op.K=opArred(pr.p*(1+(+db.dataset.opdist))); opDesenha(); } return; }
+  const tr=e.target.closest('[data-optk]'); if(tr&&!e.target.closest('.info')){ const t=tr.dataset.optk; opTroca(t); window.scrollTo({top:0,behavior:'smooth'}); }
+});
+function opLe(){ const O=S.op, g=id=>document.getElementById(id); if(!g('op-k')) return;
+  O.tipo=g('op-tipo').value; O.venc=g('op-venc').value; O.K=num(g('op-k').value);
+  const v=num(g('op-vol').value); if(ok(v)&&Math.abs(v-O.vol)>0.04){ O.vol=v; O.volAuto=false; }
+  const tx=num(g('op-taxa').value); if(ok(tx)) O.taxa=tx;
+  O.qtd=Math.max(1,Math.round(num(g('op-qtd').value)||100)); O.mkt=g('op-mkt').value.trim(); }
+async function opTroca(t){ const O=S.op; t=String(t||'').trim().toUpperCase(); if(!t||t===O.tk&&opPreco(t)) return;
+  O.tk=t; O.K=null; O.mkt=''; O.volAuto=true; await loadDia(t); opDefaults(); opDesenha(); if(O.ideias&&O.ideias!=='carregando') opDesenhaIdeias(); }
+document.addEventListener('change',e=>{
+  const el=e.target; if(!/^op-/.test(el.id)) return;
+  if(el.id==='op-tk'){ opTroca(el.value); return; }
+  const tipoAnt=S.op.tipo; opLe();
+  if(el.id==='op-tipo'&&S.op.tipo!==tipoAnt){ S.op.K=null; S.op.mkt=''; opDefaults(); }
+  opDesenha();
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.closest&&e.target.closest('.op-form')){ e.preventDefault(); e.target.blur(); } });
 
 // ===================== verificação automática dos dados =====================
 const QNIVEL={erro:['Provável erro','ruim'],atencao:['Atenção','aviso'],info:['Aviso','']};
