@@ -217,6 +217,18 @@ td.sgwrap{white-space:normal;min-width:220px}
 .sim-form .inp{width:100%}
 .sim-form .pair{display:flex;gap:6px}
 .sim-form .pair select:first-child{flex:0 0 76px}
+/* opções */
+.op-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 18px;align-items:start}
+@media (max-width:900px){.op-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:420px){.op-form{grid-template-columns:minmax(0,1fr)}}
+.op-form .f{align-content:start}
+.op-form .f label{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.op-form .inp{width:100%;height:36px}
+.op-hint{font-size:11.5px;color:var(--muted);line-height:1.35;margin-top:2px}
+.op-chips{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:2px}
+.op-chips button{border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:6px;padding:4px 0;font:500 11.5px var(--f-mono);cursor:pointer}
+.op-chips button:hover{color:var(--fg);border-color:var(--muted)}
+.op-chips button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .quick{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .quick .btn{padding:3px 8px;font-size:11.5px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
@@ -1869,19 +1881,19 @@ function opDesenha(){
   const vs=opVencs(5).map(opISO); if(O.venc&&!vs.includes(O.venc)) vs.unshift(O.venc);
   const v1=opVol(O.tk,21), v3=opVol(O.tk,63), v12=opVol(O.tk,252);
   const dists=O.tipo==='call'?[0.03,0.05,0.08,0.10]:[-0.03,-0.05,-0.08,-0.10];
-  box.innerHTML=`<div class="card-b sim-form op-form" style="align-items:start">
-    <div class="f"><label for="op-tk">Ação${info('Ações e ETFs com opções negociadas na B3. Você pode digitar outra, mas confira se ela tem opções com volume.')}</label><input class="inp" id="op-tk" list="op-dl" value="${esc(O.tk)}" autocomplete="off"><datalist id="op-dl">${OP_LISTA.map(([t])=>`<option value="${t}">`).join('')}</datalist></div>
-    <div class="f"><label for="op-tipo">Operação${info('Venda coberta de CALL: você tem as ações e aceita vendê-las pelo strike.\n\nVenda de PUT: você tem o dinheiro reservado e aceita comprar as ações pelo strike.')}</label><select class="inp" id="op-tipo"><option value="call" ${O.tipo==='call'?'selected':''}>Vender CALL coberta</option><option value="put" ${O.tipo==='put'?'selected':''}>Vender PUT</option></select></div>
-    <div class="f"><label for="op-venc">Vencimento${info('As opções mensais da B3 vencem na terceira sexta-feira do mês. A conta usa os dias úteis até lá, sem descontar feriados.')}</label><select class="inp" id="op-venc">${vs.map(v=>`<option value="${v}" ${v===O.venc?'selected':''}>${opBR(v).slice(0,6)+v.slice(2,4)} · ${opDU(v)} d.u.</option>`).join('')}</select></div>
+  box.innerHTML=`<div class="card-b op-form">
+    <div class="f"><label for="op-tk">Ação${info('Ações e ETFs com opções negociadas na B3. Você pode digitar outra, mas confira se ela tem opções com volume.')}</label><input class="inp" id="op-tk" list="op-dl" value="${esc(O.tk)}" autocomplete="off"><datalist id="op-dl">${OP_LISTA.map(([t])=>`<option value="${t}">`).join('')}</datalist><span class="op-hint">${pr?`fechou em ${fR(pr.p)} (${opBR(pr.dt).slice(0,5)})`:'sem histórico diário'}</span></div>
+    <div class="f"><label for="op-tipo">Operação${info('Venda coberta de CALL: você tem as ações e aceita vendê-las pelo strike.\n\nVenda de PUT: você tem o dinheiro reservado e aceita comprar as ações pelo strike.')}</label><select class="inp" id="op-tipo"><option value="call" ${O.tipo==='call'?'selected':''}>Vender CALL coberta</option><option value="put" ${O.tipo==='put'?'selected':''}>Vender PUT</option></select><span class="op-hint">${O.tipo==='call'?'você já tem as ações':'você deixa o dinheiro reservado'}</span></div>
+    <div class="f"><label for="op-venc">Vencimento${info('As opções mensais da B3 vencem na terceira sexta-feira do mês. A conta usa os dias úteis até lá, sem descontar feriados.')}</label><select class="inp" id="op-venc">${vs.map(v=>`<option value="${v}" ${v===O.venc?'selected':''}>${opBR(v).slice(0,6)+v.slice(2,4)} · ${opDU(v)} d.u.</option>`).join('')}</select><span class="op-hint">3ª sexta-feira do mês</span></div>
     <div class="f"><label for="op-k">Strike (R$)${info(O.tipo==='call'?'Preço pelo qual você aceita vender a ação. Quanto mais acima do preço de hoje, menor o prêmio e menor a chance de ser exercido.':'Preço pelo qual você aceita comprar a ação. Quanto mais abaixo do preço de hoje, menor o prêmio e menor a chance de ser exercido.')}</label><input class="inp" id="op-k" inputmode="decimal" value="${ok(O.K)?fN(O.K,2):''}">
-      <div class="seg" style="margin-top:6px">${dists.map(d=>`<button type="button" data-opdist="${d}" aria-pressed="${pr&&ok(O.K)&&Math.abs(O.K/pr.p-1-d)<0.006}">${d>0?'+':''}${Math.round(d*100)}%</button>`).join('')}</div></div>
-    <div class="f"><label for="op-vol">Volatilidade (% ao ano)${info('Quanto a ação costuma oscilar. É o número que mais pesa no preço da opção.\n\nVem preenchida com a volatilidade dos últimos 3 meses. O mercado costuma cobrar um pouco mais que isso.\n\nSe você souber o preço real da opção, preencha "Prêmio no home broker" que a calculadora descobre a volatilidade que o mercado está usando.')}</label><input class="inp" id="op-vol" inputmode="decimal" value="${ok(O.vol)?fN(O.vol,1):''}">
-      <span class="note" style="margin-top:4px">1 mês ${fP(v1,0)} · 3 meses ${fP(v3,0)} · 1 ano ${fP(v12,0)}</span></div>
-    <div class="f"><label for="op-taxa">Juros (% ao ano)${info('Taxa livre de risco usada na fórmula. Vem com o CDI dos últimos 3 meses, anualizado.')}</label><input class="inp" id="op-taxa" inputmode="decimal" value="${ok(O.taxa)?fN(O.taxa,2):''}"></div>
-    <div class="f"><label for="op-qtd">Quantidade de ações${info('Cada opção vale 100 ações. Para venda coberta você precisa ter essas ações; para a put, o dinheiro para comprá-las pelo strike.')}</label><input class="inp" id="op-qtd" inputmode="numeric" value="${O.qtd}"></div>
-    <div class="f"><label for="op-mkt">Prêmio no home broker (R$, opcional)${info('Se você achou a opção no home broker, digite o preço dela (o que pagam para comprar). A calculadora mostra a volatilidade que o mercado está cobrando e se o prêmio está caro ou barato perto da teoria.')}</label><input class="inp" id="op-mkt" inputmode="decimal" value="${esc(O.mkt)}" placeholder="ex.: 0,85"></div>
+      <div class="op-chips">${dists.map(d=>`<button type="button" data-opdist="${d}" aria-pressed="${pr&&ok(O.K)&&Math.abs(O.K/pr.p-1-d)<0.011}">${d>0?'+':''}${Math.round(d*100)}%</button>`).join('')}</div></div>
+    <div class="f"><label for="op-vol">Volatilidade (% a.a.)${info('Quanto a ação costuma oscilar. É o número que mais pesa no preço da opção.\n\nVem preenchida com a volatilidade dos últimos 3 meses. O mercado costuma cobrar um pouco mais que isso.\n\nSe você souber o preço real da opção, preencha "Prêmio no home broker" que a calculadora descobre a volatilidade que o mercado está usando.')}</label><input class="inp" id="op-vol" inputmode="decimal" value="${ok(O.vol)?fN(O.vol,1):''}">
+      <span class="op-hint">histórica: 1 mês ${fP(v1,0)} · 3 meses ${fP(v3,0)} · 1 ano ${fP(v12,0)}</span></div>
+    <div class="f"><label for="op-taxa">Juros (% a.a.)${info('Taxa livre de risco usada na fórmula. Vem com o CDI dos últimos 3 meses, anualizado.')}</label><input class="inp" id="op-taxa" inputmode="decimal" value="${ok(O.taxa)?fN(O.taxa,2):''}"><span class="op-hint">CDI dos últimos 3 meses</span></div>
+    <div class="f"><label for="op-qtd">Qtd. de ações${info('Cada opção vale 100 ações. Para venda coberta você precisa ter essas ações; para a put, o dinheiro para comprá-las pelo strike.')}</label><input class="inp" id="op-qtd" inputmode="numeric" value="${O.qtd}"><span class="op-hint">1 opção = 100 ações</span></div>
+    <div class="f"><label for="op-mkt">Prêmio real (R$)${info('Se você achou a opção no home broker, digite o preço dela (o que pagam para comprar). A calculadora mostra a volatilidade que o mercado está cobrando e se o prêmio está caro ou barato perto da teoria.')}</label><input class="inp" id="op-mkt" inputmode="decimal" value="${esc(O.mkt)}" placeholder="opcional, ex.: 0,85"><span class="op-hint">o preço da opção no home broker</span></div>
    </div>
-   ${pr?`<p class="note" style="margin:0;padding:0 16px 14px">${esc(O.tk)} fechou em ${fR(pr.p)} no dia ${opBR(pr.dt)}. ${O.volAuto?'Volatilidade dos últimos 3 meses.':'Volatilidade digitada por você.'}</p>`:`<p class="note down" style="margin:0;padding:0 16px 14px">Não encontrei o histórico diário de ${esc(O.tk)}. Escolha uma ação da lista.</p>`}`;
+   ${pr?(O.volAuto?'':`<p class="note" style="margin:0;padding:0 16px 14px">Volatilidade digitada por você. Para voltar à dos últimos 3 meses, troque de ação e volte.</p>`):`<p class="note down" style="margin:0;padding:0 16px 14px">Não encontrei o histórico diário de ${esc(O.tk)}. Escolha uma ação da lista.</p>`}`;
   opResultado();
 }
 function opResultado(){
