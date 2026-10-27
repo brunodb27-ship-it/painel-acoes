@@ -255,6 +255,11 @@ def compute(dfp: dict, itr: dict, tickers: pd.DataFrame) -> pd.DataFrame:
     return tickers.merge(f, on="cnpj", how="inner")
 
 
+# composição das units mais negociadas (ações por unit). As outras são deduzidas pelo preço.
+UNIT_K = {"TAEE11": 3, "KLBN11": 5, "SANB11": 2, "ENGI11": 5, "ALUP11": 3, "SAPR11": 5, "BPAC11": 3,
+          "CPLE11": 5, "IGTI11": 3, "BRBI11": 3, "RNEW11": 3}
+
+
 def indicadores(base: pd.DataFrame, precos: dict[str, float]) -> pd.DataFrame:
     """Junta preço por ticker e calcula os indicadores de mercado."""
     b = base.copy()
@@ -270,7 +275,10 @@ def indicadores(base: pd.DataFrame, precos: dict[str, float]) -> pd.DataFrame:
     def vm(grp):
         p_on = grp.loc[grp["ticker"].str.endswith("3"), "preco"].dropna()
         p_pn = grp.loc[grp["ticker"].str.match(r".*[456]$"), "preco"].dropna()
-        p_any = grp["preco"].dropna()
+        p_any = grp.loc[~grp["ticker"].str.endswith("11"), "preco"].dropna()   # units valem várias ações: não servem de preço de uma ação
+        if p_any.empty:   # só a unit tem preço (ex.: KLBN11): divide pelo número de ações do pacote
+            u = grp[grp["ticker"].isin(UNIT_K.keys())].dropna(subset=["preco"])
+            p_any = (u["preco"] / u["ticker"].map(UNIT_K)) if len(u) else grp["preco"].dropna()
         if p_any.empty:
             return None
         on = grp["acoes_on"].iloc[0] or 0
@@ -281,8 +289,19 @@ def indicadores(base: pd.DataFrame, precos: dict[str, float]) -> pd.DataFrame:
     vmap = {c: vm(g) for c, g in b.groupby("cnpj")}
     b["valor_mercado"] = pd.to_numeric(b["cnpj"].map(vmap), errors="coerce").astype(float)
     s = lambda a, c: a / c if (a is not None and c not in (None, 0)) else None
-    b["lpa"] = b["lucro_12m"] / b["acoes"]
-    b["vpa"] = b["patrimonio"] / b["acoes"]
+    # units (ex.: TAEE11 = 1 ON + 2 PN, KLBN11 = 1 ON + 4 PN): o preço é de um pacote de ações.
+    # Descobre quantas ações há no pacote comparando o preço da unit com o preço médio por ação da empresa,
+    # e calcula LPA e VPA por unit; sem isso o P/L e o P/VP da unit saem multiplicados (TAEE11 aparecia com P/L 28 em vez de 9).
+    pm = b["valor_mercado"] / b["acoes"]
+    k = b["preco"] / pm
+    kr = k.round()
+    unit = b["ticker"].str.endswith("11") & kr.ge(2) & ((k / kr - 1).abs() < 0.12)
+    b["acoes_por_ticker"] = 1.0
+    b.loc[unit, "acoes_por_ticker"] = kr[unit]
+    conhecida = b["ticker"].isin(UNIT_K.keys())
+    b.loc[conhecida, "acoes_por_ticker"] = b.loc[conhecida, "ticker"].map(UNIT_K)
+    b["lpa"] = b["lucro_12m"] / b["acoes"] * b["acoes_por_ticker"]
+    b["vpa"] = b["patrimonio"] / b["acoes"] * b["acoes_por_ticker"]
     b["pl"] = b["preco"] / b["lpa"]
     b["pvp"] = b["preco"] / b["vpa"]
     b["roe"] = b["lucro_12m"] / b["patrimonio"]
