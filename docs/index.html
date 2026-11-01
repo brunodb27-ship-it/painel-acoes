@@ -1141,22 +1141,32 @@ function blocoComposicao(labels, cur, inv, vPreco, vDiv, vSem, vRe, reinv, sps, 
     <div class="card-b" style="padding-top:8px">${sps.length?`<p class="note" style="margin:0 0 4px"><b style="color:var(--fg)">Desdobramentos no período</b></p><ul class="note" style="margin:0;padding-left:18px">${spTxt}</ul><p class="note" style="margin:6px 0 0">Desdobramento não muda o patrimônio nem o total de dividendos: você passa a ter mais ações, cada uma valendo e pagando proporcionalmente menos. A conta acima já considera isso.</p>`:'<p class="note" style="margin:0">Nenhum desdobramento ou grupamento no período.</p>'}</div>
    </section>`;
 }
+// rentabilidade média ao ano (TIR): considera cada aporte no mês em que entrou.
+// fluxos: valor inicial no mês 0, aporte nos meses 1..n e o valor final no último mês. f = fator de correção por mês (opcional).
+function tirAnual(labels, valor, aporte, fim, f){
+  const n=labels.length-1; if(n<1||!(fim>0)||!(valor>0||aporte>0)) return null;
+  const fl=k=>(k===0?valor:aporte)*(f?f[k]:1);
+  const vpl=r=>{ let v=0, d=1; for(let k=0;k<=n;k++){ v-=fl(k)/d; if(k===n) v+=fim/d; d*=1+r; } return v; };
+  let lo=-0.99, hi=1; if(vpl(lo)*vpl(hi)>0) return null;
+  for(let i=0;i<200;i++){ const m=(lo+hi)/2; if(vpl(lo)*vpl(m)<=0) hi=m; else lo=m; }
+  return Math.pow(1+(lo+hi)/2,12)-1;
+}
 function kpisBloco(fim, inv, labels, s, cur){
   const anos=(labels.length-1)/12;
   if(s.real&&cur==='BRL'){ const invR=investidoCorrigido(labels,s.valor,s.aporte);
-    if(invR){ const ganho=fim-invR, f0=fatorInflacao(labels)[0], tirR=anos>0&&!s.aporte?Math.pow(fim/(s.valor*f0),1/anos)-1:null;
+    if(invR){ const ganho=fim-invR, f0=fatorInflacao(labels)[0], tirR=tirAnual(labels,s.valor,s.aporte,fim,fatorInflacao(labels));
       return {html:`<section class="kpis">
         <div class="kpi"><span class="lab">Você teria hoje</span><span class="val">${fR(fim)}</span><span class="sub ${cls(ganho)}">${fP(fim/invR-1,1,true)} acima da inflação</span></div>
         <div class="kpi"><span class="lab">Investido, corrigido pela inflação</span><span class="val">${fR(invR)}</span><span class="sub muted">${fR(inv)} em valores da época · IPCA</span></div>
         <div class="kpi"><span class="lab">Ganho real</span><span class="val ${cls(ganho)}">${fR(ganho)}</span><span class="sub muted">${ok(tirR)?fP(tirR,1)+' ao ano acima do IPCA':'em reais de hoje'}</span></div>
        </section>`, cdi:null, real:true}; } }
-  const lucro=fim-inv, tir=anos>0&&!s.aporte?Math.pow(fim/s.valor,1/anos)-1:null;
+  const lucro=fim-inv, tir=tirAnual(labels,s.valor,s.aporte,fim);
   const cdi=cur==='BRL'?simBench(labels,s.valor,s.aporte,'cdi'):null, ipca=cur==='BRL'?simBench(labels,s.valor,s.aporte,'ipca'):null;
   return {html:`<section class="kpis">
     <div class="kpi"><span class="lab">Você teria hoje</span><span class="val">${money(fim,cur)}</span><span class="sub ${cls(lucro)}">${fP(fim/inv-1,1,true)} · ${s.reinv?'reinvestindo':'sem reinvestir'}${s.opc?' · com opções':''}${s.imposto?' · após impostos do caminho':''}</span></div>
     <div class="kpi"><span class="lab">Total investido</span><span class="val">${money(inv,cur)}</span><span class="sub muted">${labels.length-1} meses</span></div>
-    <div class="kpi"><span class="lab">Ganho</span><span class="val ${cls(lucro)}">${money(lucro,cur)}</span><span class="sub muted">${ok(tir)?fP(tir,1)+' ao ano':''}</span></div>
-    ${cdi?`<div class="kpi"><span class="lab">No CDI teria</span><span class="val">${fR(cdi.at(-1))}</span><span class="sub ${cls(fim-cdi.at(-1))}">${fim>=cdi.at(-1)?'ganhou':'perdeu'} do CDI por ${fR(Math.abs(fim-cdi.at(-1)))}</span></div>`:''}
+    <div class="kpi"><span class="lab">Ganho</span><span class="val ${cls(lucro)}">${money(lucro,cur)}</span><span class="sub muted">${ok(tir)?fP(tir,1)+' ao ano em média':''}</span></div>
+    ${cdi?`<div class="kpi"><span class="lab">No CDI teria</span><span class="val">${fR(cdi.at(-1))}</span><span class="sub ${cls(fim-cdi.at(-1))}">${fim>=cdi.at(-1)?'ganhou':'perdeu'} do CDI por ${fR(Math.abs(fim-cdi.at(-1)))}${(t=>ok(t)?` · CDI: ${fP(t,1)} ao ano`:'')(tirAnual(labels,s.valor,s.aporte,cdi.at(-1)))}</span></div>`:''}
     ${ipca?`<div class="kpi"><span class="lab">Só para empatar com a inflação</span><span class="val">${fR(ipca.at(-1))}</span><span class="sub muted">valor corrigido pelo IPCA</span></div>`:''}
    </section>`, cdi};
 }
