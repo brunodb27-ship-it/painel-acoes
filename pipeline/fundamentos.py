@@ -63,6 +63,45 @@ def load_doc(zip_path: Path) -> dict[str, pd.DataFrame]:
     return out
 
 
+# Empresas com o código de negociação errado ou ausente no cadastro (FCA) da CVM.
+# Sem isso, elas somem do painel (ex.: BTG Pactual aparece com código "000000", CSN com "4030").
+# Formato: CNPJ -> [(código, tipo do valor mobiliário)]. Só entra se o código ainda não existir para a empresa.
+CODIGOS_CORRIGIDOS = {
+    "30.306.294/0001-45": [("BPAC11", "Units"), ("BPAC3", "Ações Ordinárias"), ("BPAC5", "Ações Preferenciais")],  # BTG Pactual
+    "33.042.730/0001-04": [("CSNA3", "Ações Ordinárias")],                       # CSN
+    "08.902.291/0001-15": [("CMIN3", "Ações Ordinárias")],                       # CSN Mineração
+    "61.189.288/0001-89": [("AMAR3", "Ações Ordinárias")],                       # Marisa
+    "36.542.025/0001-64": [("BRQB3", "Ações Ordinárias")],                       # BRQ
+    "92.660.570/0001-26": [("LUXM4", "Ações Preferenciais")],                    # Trevisa
+    "93.828.986/0001-73": [("MAPT4", "Ações Preferenciais")],                    # Cemepe
+    "51.928.174/0001-50": [("PLAS3", "Ações Ordinárias")],                       # Plascar
+    "60.884.319/0001-59": [("NORD3", "Ações Ordinárias")],                       # Nordon
+    "30.540.991/0001-66": [("HAGA4", "Ações Preferenciais")],                    # Haga
+    "02.357.251/0001-53": [("LMED3", "Ações Ordinárias")],                       # Lifemed
+}
+
+
+def _corrige_codigos(vm: pd.DataFrame) -> pd.DataFrame:
+    """Acrescenta os códigos certos das empresas da tabela CODIGOS_CORRIGIDOS, copiando os dados da própria empresa."""
+    novos = []
+    for cnpj, codigos in CODIGOS_CORRIGIDOS.items():
+        da_empresa = vm[vm["CNPJ_Companhia"] == cnpj]
+        if da_empresa.empty:
+            continue
+        base = da_empresa.sort_values(["_ano", "_v"]).iloc[-1]
+        ja_tem = set(da_empresa["Codigo_Negociacao"])
+        for cod, tipo in codigos:
+            if cod in ja_tem:
+                continue
+            r = base.copy()
+            r["Codigo_Negociacao"] = cod
+            r["Valor_Mobiliario"] = tipo
+            r["Data_Fim_Negociacao"] = float("nan")
+            r["_v"] = r["_v"] + 0.5
+            novos.append(r)
+    return pd.concat([vm, pd.DataFrame(novos)], ignore_index=True) if novos else vm
+
+
 def load_tickers(fca_zips) -> pd.DataFrame:
     """Códigos de negociação ativos, juntando o cadastro (FCA) de mais de um ano.
     O FCA do ano corrente vem incompleto até as empresas reapresentarem o formulário;
@@ -83,8 +122,13 @@ def load_tickers(fca_zips) -> pd.DataFrame:
     geral = pd.concat(gerais, ignore_index=True)
     vm["_v"] = pd.to_numeric(vm["Versao"], errors="coerce").fillna(0)
     geral["_v"] = pd.to_numeric(geral["Versao"], errors="coerce").fillna(0)
-    vm = vm[(vm["Mercado"] == "Bolsa") & vm["Codigo_Negociacao"].notna()]
-    vm = vm[vm["Codigo_Negociacao"].str.match(r"^[A-Z]{4}\d{1,2}$")]
+    vm = vm[vm["Mercado"] == "Bolsa"].copy()
+    # o cadastro da CVM às vezes traz o código em minúscula ou com espaço (ex.: "tgma3")
+    vm["Codigo_Negociacao"] = vm["Codigo_Negociacao"].astype(str).str.strip().str.upper()
+    vm = _corrige_codigos(vm)
+    # 4 caracteres + número; o 2º ao 4º podem ter dígito (ex.: B3SA3)
+    vm = vm[vm["Codigo_Negociacao"].str.match(r"^[A-Z][A-Z0-9]{3}\d{1,2}$")]
+    vm = vm[vm["Codigo_Negociacao"].str[:4].str.count(r"[A-Z]") >= 3]   # raiz com pelo menos 3 letras (descarta lixo como "B1003")
     # registro mais novo de cada código; só depois filtra os que deixaram de negociar
     vm = vm.sort_values(["_ano", "_v"]).drop_duplicates(["CNPJ_Companhia", "Codigo_Negociacao"], keep="last")
     vm = vm[vm["Data_Fim_Negociacao"].isna()]

@@ -20,7 +20,7 @@ import fundamentos as F
 
 PRIMEIRO_ANO = 2010
 JANELAS = [5, 10, 15, 20]
-VERSAO = 3  # aumente quando mudar o cálculo dos anos, para refazer o histórico inteiro (3: lucro do consolidado e demonstrações individuais)
+VERSAO = 4  # aumente quando mudar o cálculo dos anos, para refazer o histórico inteiro (3: lucro do consolidado e demonstrações individuais; 4: entram BTG, B3, CSN e outras com código errado na CVM)
 CAMPOS_ANO = ["receita", "ebit", "lucro", "patrimonio", "proventos", "acoes_on", "acoes_pn", "banco"]
 
 
