@@ -263,6 +263,39 @@ table.comp tbody tr:hover td{background:transparent}
 table.comp tbody tr.sel td{background:var(--accent-soft)}
 table.comp tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .f label.check,.check{display:flex;gap:8px;align-items:center;font-size:13px;text-transform:none;letter-spacing:0;color:var(--fg)}
+
+/* comparar */
+.cp-wrap{overflow-x:auto}
+.cp-tbl td{padding:8px 10px}
+.cp-tbl tbody tr{cursor:default}
+.cp-tbl th.cp-lab{position:sticky;left:0;z-index:2;background:var(--panel);text-align:left;min-width:190px;max-width:240px;white-space:normal;cursor:default;font-family:var(--f-body);font-size:13px;text-transform:none;letter-spacing:0;color:var(--fg);font-weight:500;padding:8px 12px 8px 16px;border-right:1px solid var(--line)}
+.cp-tbl tbody th.cp-lab{top:auto}
+.cp-tbl thead th.cp-corner{z-index:3;vertical-align:bottom;font-family:var(--f-display);font-size:14px;font-weight:700}
+.cp-lab small{display:block;font-size:11px;color:var(--faint);font-weight:400;line-height:1.3;margin-top:2px}
+.cp-tbl tbody tr:hover th.cp-lab{background:var(--panel2)}
+.cp-g td{font-family:var(--f-body);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:600;padding:18px 16px 6px;border-bottom:1px solid var(--line)}
+.cp-tbl tbody tr.cp-g:hover td{background:transparent}
+.cp-g td{position:sticky;left:0}
+.cp-col{min-width:132px;vertical-align:bottom;cursor:default;padding:10px 10px 8px}
+.cp-hd{display:flex;flex-direction:column;align-items:flex-end;gap:3px;position:relative;padding-left:16px}
+.cp-hd .tk{color:var(--fg);text-decoration:none;font-size:15px}
+.cp-hd .tk:hover{color:var(--accent)}
+.cp-emp{font-family:var(--f-body);font-size:11px;text-transform:none;letter-spacing:0;color:var(--muted);max-width:150px;white-space:normal;line-height:1.25;text-align:right}
+.cp-wins{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);text-transform:none}
+.cp-lider{box-shadow:inset 0 3px 0 var(--accent)}
+.cp-lider .cp-wins{color:var(--accent);font-weight:700}
+.cp-x{border:0;background:none;color:var(--faint);cursor:pointer;font-size:16px;line-height:1;padding:0 3px;border-radius:4px}
+.cp-x:hover{color:var(--down);background:var(--down-soft)}
+.cp-hd .cp-x{position:absolute;left:-4px;top:-2px}
+.chip .cp-x{font-size:13px;margin-left:2px}
+td.cp-win{color:var(--accent);font-weight:600;background:var(--accent-soft)}
+.cp-tbl tbody tr:hover td.cp-win{background:var(--accent-soft)}
+.cp-tr{margin-right:5px;font-size:12px}
+.cp-med{color:var(--muted);border-left:1px dashed var(--line);background:color-mix(in srgb,var(--panel2) 50%,transparent)}
+.cp-tbl small{font-family:var(--f-body);font-size:10.5px;font-weight:400}
+.cp-seg{display:inline-flex;margin-left:12px;vertical-align:middle;text-transform:none;letter-spacing:0}
+.cp-seg button{font-size:11.5px;padding:3px 9px}
+@media (max-width:600px){ .cp-tbl th.cp-lab{min-width:118px;max-width:130px;padding-left:10px;font-size:12px} .cp-lab small{display:none} .cp-col{min-width:104px} .cp-emp{max-width:100px} .cp-g td{padding-left:10px} }
 </style>
 <style id="skin">
 /* ===== Repaginada 2026-11 (Bull & Bear): base clara fria, bloco escuro de destaque, cartões arredondados.
@@ -382,6 +415,7 @@ td{padding:9px 8px}
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="buscador">Buscador</button>
     <button role="tab" data-tab="acao">Ação</button>
+    <button role="tab" data-tab="comparar">Comparar</button>
     <button role="tab" data-tab="ranking">Ranking</button>
     <button role="tab" data-tab="sinais">Sinais</button>
     <button role="tab" data-tab="carteira">Carteira</button>
@@ -483,7 +517,7 @@ async function loadHist(t){
 function setTab(t){ S.tab=t; document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t)); render(); }
 function render(){
   Object.values(S.charts).forEach(c=>c&&c.destroy()); S.charts={};
-  const v={buscador:vBuscador,acao:vAcao,simulador:vSim,ranking:vRank,sinais:vSinais,liberdade:vLib,carteira:vCarteira,opcoes:vOpcoes}[S.tab]; $('#app').innerHTML=(S.qualAberto?vQual():'')+v(); after();
+  const v={buscador:vBuscador,acao:vAcao,comparar:vComparar,simulador:vSim,ranking:vRank,sinais:vSinais,liberdade:vLib,carteira:vCarteira,opcoes:vOpcoes}[S.tab]; $('#app').innerHTML=(S.qualAberto?vQual():'')+v(); after();
 }
 function after(){
   if(S.tab==='acao') drawAcao();
@@ -492,7 +526,8 @@ function after(){
   if(S.tab==='carteira') drawCarteira();
   if(S.tab==='opcoes') runOp();
   if(S.tab==='ranking'&&!S.rank&&!S.rankErr) loadRank();
-  if(S.sinais===undefined&&!S._sgLoading){ S._sgLoading=true; loadSinais().then(()=>{ if(['sinais','acao','buscador'].includes(S.tab)) render(); }); }
+  if(S.tab==='comparar'){ if(!S.rank&&!S.rankErr) loadRank(); drawComparar(); }
+  if(S.sinais===undefined&&!S._sgLoading){ S._sgLoading=true; loadSinais().then(()=>{ if(['sinais','acao','buscador','comparar'].includes(S.tab)) render(); }); }
 }
 
 // ===================== buscador =====================
@@ -574,7 +609,7 @@ const RK_PRECO=['ret_total','ret_preco','cagr_total'];
 const RK_DIV=['dy_medio','anos_div'];
 async function loadRank(){
   try{ S.rank=await getJSON('data/ranking.json'); }catch(e){ S.rankErr='O ranking ainda não foi gerado. Ele aparece depois da próxima atualização automática.'; }
-  if(S.tab==='ranking') render();
+  if(S.tab==='ranking'||S.tab==='comparar') render();
 }
 function rkCompleto(m,k,n){
   if(RK_PRECO.includes(k)) return !!m.preco_completo;
@@ -831,7 +866,7 @@ function heroFicha(r){
     <h2 class="name" style="margin:0">${esc(r.ticker)}</h2><div class="sub">${esc(r.empresa)}</div></div>
    <div class="r">${quando?`<span class="when">${quando}</span>`:''}<div class="px">${ok(r.preco)?money(r.preco,cur):'sem cotação'}</div>
     <div class="pills">${pill(r.var_dia,'no dia',2)}${pill(r.var_12m,'em 12 meses',1)}</div>
-    <div class="acts"><button class="btn pri" data-simular="${esc(r.ticker)}">Simular investimento</button><button class="btn ghost" data-tab="carteira">Ir para a Carteira</button></div></div>
+    <div class="acts"><button class="btn pri" data-simular="${esc(r.ticker)}">Simular investimento</button><button class="btn ghost" data-cpabre="${esc(r.ticker)}">Comparar com o setor</button><button class="btn ghost" data-tab="carteira">Ir para a Carteira</button></div></div>
   </section>`;
 }
 function kpiFicha(r){
@@ -1553,6 +1588,203 @@ function sugs(q){
   el.hidden=false;
 }
 function openTk(t){ S.tk=t; S.qualAberto=false; $('#q').value=''; $('#sugs').hidden=true; try{ history.replaceState(null,'','#'+t); }catch{} setTab('acao'); window.scrollTo({top:0}); }
+
+
+// ===================== comparar (2026-11) =====================
+// Várias empresas do mesmo setor lado a lado; troféu no melhor de cada linha.
+S.cp={mercado:'Brasil',setor:'',n:'6',ordem:'valor_mercado',extra:[],fora:[],anos:'5'};
+const CP_ABREV={'Const. Civil, Mat. Const. e Decoração':'Construção Civil, Mat. Constr. e Decoração','Máqs., Equip., Veíc. e Peças':'Máquinas, Equipamentos, Veículos e Peças','Sem Setor Principal':'Holdings (sem setor principal)'};
+const cpSetor=r=>{ const s=(r.setor||'').replace(/^Emp\. Adm\. Part\. - /,''); return CP_ABREV[s]||s; };
+const cpFora=r=>!r||/^(ETF|Índice)$/.test(r.setor||'')||!r.setor;
+function cpSetores(merc){
+  const m={}; for(const x of cpEmpresas(merc,null)){ const s=cpSetor(x); m[s]=(m[s]||0)+1; }
+  return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0],'pt-BR'));
+}
+// uma linha por empresa: a classe de ação mais negociada
+function cpEmpresas(merc,setor){
+  const best={};
+  for(const x of S.rows){
+    if(cpFora(x)||(x.mercado||'Brasil')!==merc||!ok(x.preco)) continue;
+    if(setor&&cpSetor(x)!==setor) continue;
+    const id=x.empresa||x.ticker, b=best[id];
+    if(!b||(x.liquidez||0)>(b.liquidez||0)) best[id]=x;
+  }
+  return Object.values(best);
+}
+function cpOrdena(xs,k){
+  const v=x=>k==='score'?(sgDe(x.ticker)||{}).total:k==='dy'?dyDe(x):x[k];
+  return [...xs].sort((a,b)=>{ const va=v(a), vb=v(b); if(!ok(va)) return 1; if(!ok(vb)) return -1; return vb-va; });
+}
+function cpSelecao(){
+  const q=S.cp; const univ=q.setor?cpEmpresas(q.mercado,q.setor):[];
+  let lista=cpOrdena(univ,q.ordem).filter(x=>!q.fora.includes(x.ticker));
+  if(q.n!=='Todas') lista=lista.slice(0,+q.n);
+  for(const t of q.extra){ const r=byTk(t); if(r&&!lista.some(x=>x.ticker===t||(x.empresa&&x.empresa===r.empresa))) lista.push(r); }
+  return {univ,lista};
+}
+// valor de cada linha. Retorna número ou null; texto especial em .txt
+const cpH=(x,k)=>{ const R=S.rank; const m=R&&R.dados[x.ticker]; return m&&m[S.cp.anos]?m[S.cp.anos][k]:null; };
+const cpDivBrPL=x=>ok(x.divida_bruta)&&ok(x.patrimonio)&&x.patrimonio>0?x.divida_bruta/x.patrimonio:null;
+// [chave, rótulo, dica, formato, regra do troféu ('max'|'min+'|'min'|''), getter, só não-banco]
+const CP_LINHAS=[
+  ['Tamanho e preço',[
+    ['valor_mercado','Valor de mercado','Preço × total de ações','b','max',x=>x.valor_mercado],
+    ['preco','Cotação','Último fechamento','r','',x=>x.preco],
+    ['var_12m','Variação em 12 meses','Só o preço','ps','max',x=>x.var_12m],
+    ['liquidez','Liquidez diária','Volume médio negociado','b','max',x=>x.liquidez],
+  ]],
+  ['Preço justo?',[
+    ['pl','P/L','Preço ÷ lucro por ação · menor é mais barata','x','min+',x=>x.pl],
+    ['pvp','P/VP','Preço ÷ patrimônio por ação · menor é mais barata','x','min+',x=>x.pvp],
+    ['ev_ebitda','EV/EBITDA','Valor da firma ÷ geração de caixa · menor é mais barata','x','min+',x=>x.ev_ebitda,1],
+    ['dy','Dividend yield 12m','Proventos ÷ preço','p','max',x=>dyDe(x)],
+    ['lpa','LPA','Lucro por ação (não comparável entre empresas)','r','',x=>x.lpa],
+    ['vpa','VPA','Patrimônio por ação (não comparável entre empresas)','r','',x=>x.vpa],
+  ]],
+  ['Rentabilidade',[
+    ['roe','ROE','Lucro ÷ patrimônio','p','max',x=>x.roe],
+    ['m_ebit','Margem EBIT','Lucro operacional ÷ receita','p','max',x=>x.m_ebit,1],
+    ['m_liq','Margem líquida','Lucro ÷ receita','p','max',x=>x.m_liq,1],
+    ['lucro_12m','Lucro em 12 meses','Lucro líquido dos últimos 4 trimestres','b','max',x=>x.lucro_12m],
+  ]],
+  ['Endividamento',[
+    ['div_liq_ebitda','Dív. líq./EBITDA','Anos de geração de caixa para quitar a dívida · menor é melhor','x','min',x=>x.div_liq_ebitda,1],
+    ['div_br_pl','Dív. bruta/PL','Dívida total ÷ patrimônio · menor é melhor','x','min',cpDivBrPL,1],
+    ['liq_corrente','Liquidez corrente','Ativo ÷ passivo de curto prazo · maior é melhor','x','max',x=>x.liq_corrente,1],
+  ]],
+  ['Histórico',[
+    ['h_ret','Retorno total','Preço + dividendos reinvestidos, % ao ano','pa','max',x=>cpH(x,'cagr_total')],
+    ['h_dy','DY médio','Média anual dos proventos','p','max',x=>cpH(x,'dy_medio')],
+    ['h_div','Anos pagando proventos','Quanto mais, mais constante','n','max',x=>cpH(x,'anos_div')],
+    ['h_lucro','Anos com lucro','Quanto mais, mais constante','n','max',x=>cpH(x,'anos_lucro')],
+    ['h_roe','ROE médio','Média do período','p','max',x=>cpH(x,'roe_med')],
+    ['h_cl','Crescimento do lucro','% ao ano no período','pa','max',x=>cpH(x,'cagr_lucro')],
+  ]],
+  ['Painel',[
+    ['score','Score do painel','Fundamentos + gráfico, de 0 a 100','n','max',x=>(sgDe(x.ticker)||{}).total],
+  ]],
+];
+function cpFmt(v,t,cur){
+  if(!ok(v)) return '—';
+  if(t==='ps') return fP(v,1,true);
+  if(t==='pa') return fP(v,1,true)+' a.a.';
+  if(t==='n') return t==='n'&&Number.isInteger(v)?String(v):fN(v,0);
+  return fmt(v,t,cur);
+}
+function cpVencedores(vals,regra){
+  const el=vals.map((v,i)=>[v,i]).filter(([v])=>ok(v)&&(regra!=='min+'||v>0));
+  if(el.length<2) return new Set();
+  const melhor=regra==='max'?Math.max(...el.map(e=>e[0])):Math.min(...el.map(e=>e[0]));
+  if(el.every(e=>e[0]===melhor)) return new Set();   // todos empatados: ninguém leva
+  return new Set(el.filter(e=>e[0]===melhor).map(e=>e[1]));
+}
+function cpMediana(univ,k,get){
+  const vals=univ.map(get).filter(v=>ok(v)&&(['pl','pvp','ev_ebitda','dy','m_ebit','m_liq'].includes(k)?valido(k==='m_ebit'?'m_ebit':k,v):Math.abs(v)<1e15));
+  return vals.length>=3?mediana(vals):null;
+}
+function vComparar(){
+  const q=S.cp;
+  if(!q.setor){ const r=byTk(S.tk); if(r&&!cpFora(r)){ q.mercado=r.mercado||'Brasil'; q.setor=cpSetor(r); } else q.setor=q.mercado==='EUA'?'Technology':'Bancos'; }
+  const setores=cpSetores(q.mercado);
+  const {univ,lista}=cpSelecao();
+  const todos=S.rows.filter(x=>!cpFora(x)&&ok(x.preco));
+  const head=`<section class="card"><div class="card-h"><h2>Comparar empresas</h2><span class="note">Escolha um setor: as maiores aparecem lado a lado, com 🏆 na melhor de cada linha</span></div>
+   <div class="card-b filters">
+    <div class="f"><label for="cp-merc">Mercado</label><select class="inp" id="cp-merc" data-cp="mercado">${['Brasil','EUA'].map(m=>`<option ${m===q.mercado?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="f" style="grid-column:span 2"><label for="cp-setor">Setor</label><select class="inp" id="cp-setor" data-cp="setor">${setores.map(([s,n])=>`<option value="${esc(s)}" ${s===q.setor?'selected':''}>${esc(s)} (${n})</option>`).join('')}</select></div>
+    <div class="f"><label for="cp-ordem">Escolher as</label><select class="inp" id="cp-ordem" data-cp="ordem">${[['valor_mercado','maiores'],['liquidez','mais negociadas'],['score','de maior score'],['dy','de maior DY'],['roe','de maior ROE']].map(([k,l])=>`<option value="${k}" ${k===q.ordem?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="f"><label for="cp-n">Quantas</label><select class="inp" id="cp-n" data-cp="n">${['3','4','6','8','10','Todas'].map(x=>`<option ${x===q.n?'selected':''}>${x}</option>`).join('')}</select></div>
+    <div class="f"><label for="cp-add">Incluir outra ação</label><input class="inp" id="cp-add" list="cp-lista" placeholder="ex.: ITUB4" autocomplete="off"><datalist id="cp-lista">${todos.map(x=>`<option value="${esc(x.ticker)}">${esc(x.empresa||'')}</option>`).join('')}</datalist></div>
+   </div>
+   ${(q.fora.length||q.extra.length)?`<div class="card-b" style="padding-top:0"><div class="presets">${q.extra.map(t=>`<span class="chip">+ ${esc(t)} <button class="cp-x" data-cpx="${esc(t)}" aria-label="Tirar ${esc(t)}">×</button></span>`).join('')}${q.fora.length?`<button class="btn" data-cpvolta="1">Mostrar de novo as ${q.fora.length} que tirei</button>`:''}</div></div>`:''}
+  </section>`;
+  if(!lista.length) return head+`<div class="card"><div class="empty">Nenhuma empresa com cotação nesse setor.</div></div>`;
+  const cur=lista.every(x=>curRow(x)===curRow(lista[0]))?curRow(lista[0]):null;
+  const soBanco=lista.every(x=>x.banco), algumBanco=lista.some(x=>x.banco);
+  const wins=lista.map(()=>0); let corpo='';
+  for(const [grupo,linhas] of CP_LINHAS){
+    if(grupo==='Histórico'&&!S.rank) { corpo+=`<tr class="cp-g"><td class="l" colspan="${lista.length+2}">${grupo} <span class="muted">· carregando…</span></td></tr>`; continue; }
+    let html='';
+    for(const [k,lab,dica,t,regra,get,naoBanco] of linhas){
+      if(naoBanco&&soBanco) continue;
+      const vals=lista.map(x=>naoBanco&&x.banco?null:get(x));
+      if(vals.every(v=>!ok(v))) continue;
+      const moedaMista=!cur&&['b','r'].includes(t);
+      const venc=(regra&&!moedaMista)?cpVencedores(vals,regra):new Set();
+      venc.forEach(i=>wins[i]++);
+      const med=cpMediana(univ.filter(x=>!(naoBanco&&x.banco)),k,get);
+      html+=`<tr><th class="l cp-lab" scope="row">${esc(lab)}<small>${esc(dica)}</small></th>${vals.map((v,i)=>{
+        const x=lista[i], na=naoBanco&&x.banco;
+        let txt=na?'<span class="muted" title="Bancos não têm EBITDA, margem nem dívida como as outras empresas">não se aplica</span>':esc(cpFmt(v,t,curRow(x)));
+        if(!na&&k==='div_liq_ebitda'&&ok(v)&&v<0) txt+=' <small class="up">caixa líquido</small>';
+        if(!na&&['pl','ev_ebitda'].includes(k)&&ok(v)&&v<=0) txt=`<span class="down">${txt}</span> <small class="down">prejuízo</small>`;
+        if(k==='h_div'||k==='h_lucro') txt+=ok(v)?` <small class="muted">de ${S.cp.anos}</small>`:'';
+        const tom=['ps','pa'].includes(t)?cls(v):'';
+        return `<td class="${venc.has(i)?'cp-win':''} ${tom}">${venc.has(i)?'<span class="cp-tr" aria-label="melhor">🏆</span>':''}${txt}</td>`;
+      }).join('')}<td class="cp-med">${ok(med)?esc(cpFmt(med,t,cur||'BRL')):'—'}</td></tr>`;
+    }
+    if(html) corpo+=`<tr class="cp-g"><td class="l" colspan="${lista.length+2}">${grupo==='Histórico'?`Histórico de ${S.cp.anos} anos <span class="seg cp-seg" role="group" aria-label="Período">${['5','10','15'].map(a=>`<button data-cpanos="${a}" aria-pressed="${a===S.cp.anos}">${a} anos</button>`).join('')}</span>`:grupo}</td></tr>`+html;
+  }
+  const maxW=Math.max(...wins);
+  const thead=`<tr><th class="l cp-lab cp-corner">${esc(q.setor)}<small>${univ.length} empresa(s) no setor</small></th>${lista.map((x,i)=>`<th class="cp-col ${wins[i]===maxW&&maxW>0?'cp-lider':''}">
+      <div class="cp-hd"><button class="cp-x" data-cprm="${esc(x.ticker)}" aria-label="Tirar ${esc(x.ticker)} da comparação" title="Tirar da comparação">×</button>
+      <a href="#${esc(x.ticker)}" data-open="${esc(x.ticker)}" class="tk">${esc(x.ticker)}</a>
+      <span class="cp-emp" title="${esc(x.empresa||'')}">${esc((x.empresa||'').replace(/\b(S\.?A\.?|CIA|COMPANHIA|HOLDING)\b\.?/gi,'').replace(/\s+/g,' ').trim())}</span>
+      <span class="cp-wins">🏆 ${wins[i]}</span></div></th>`).join('')}<th class="cp-med cp-col"><div class="cp-hd"><span class="tk" style="font-size:12px">Mediana</span><span class="cp-emp">do setor</span></div></th></tr>`;
+  const lider=lista.filter((x,i)=>wins[i]===maxW&&maxW>0).map(x=>x.ticker);
+  return head+`<section class="card"><div class="card-h"><h2>${esc(q.setor)} · ${lista.length} lado a lado</h2>
+     <span class="note">${lider.length?`Mais troféus: <b>${lider.join(', ')}</b> (${maxW})`:''}</span></div>
+   <div class="tbl-wrap cp-wrap"><table class="cp-tbl"><thead>${thead}</thead><tbody>${corpo}</tbody></table></div>
+   <div class="card-b"><p class="note" style="margin:0">🏆 = melhor valor da linha entre as empresas mostradas. P/L, P/VP e EV/EBITDA só contam quando positivos (negativo = prejuízo). LPA e VPA não ganham troféu porque dependem de quantas ações cada empresa tem. ${algumBanco?'Bancos não têm EBITDA, margens nem dívida como as outras empresas; nessas linhas aparecem como “não se aplica”. ':''}${!cur?'Há empresas em reais e em dólares: linhas em dinheiro ficam sem troféu. ':''}A contagem de troféus é só um resumo: cada linha pesa igual, o que nem sempre faz sentido. Material de estudo, não é recomendação.</p></div>
+  </section>
+  <section class="card"><div class="card-h"><h2>R$ 100 investidos há ${S.cp.anos} anos</h2><div class="legend" id="cp-leg"></div></div>
+   <div class="card-b"><div class="chart-box"><canvas id="ch-cp" aria-label="Gráfico do retorno com dividendos reinvestidos"></canvas></div>
+   <p class="note" style="margin:10px 0 0">Preço ajustado com os dividendos reinvestidos, começando em 100 no mesmo mês para todas. Ações com histórico mais curto começam quando passam a ter cotação.</p></div></section>`;
+}
+async function drawComparar(){
+  const {lista}=cpSelecao(); if(!lista.length) return;
+  const anos=+S.cp.anos, tok=S._cpTok=(S._cpTok||0)+1;
+  const hs=await Promise.all(lista.map(x=>loadHist(x.ticker).catch(()=>null)));
+  if(tok!==S._cpTok||S.tab!=='comparar'||!$('#ch-cp')) return;
+  const fim=hs.filter(Boolean).map(h=>h.d.at(-1)).sort().at(-1); if(!fim) return;
+  const ini=(+fim.slice(0,4)-anos)+fim.slice(4);
+  const labels=[...new Set(hs.filter(Boolean).flatMap(h=>h.d.filter(d=>d>=ini&&d<=fim)))].sort();
+  const cores=['--c1','--c2','--c3','--c4','--c5','--c6','--c7','--c8','--c9','--c10'];
+  const ds=[]; const leg=[];
+  lista.forEach((x,i)=>{ const h=hs[i]; if(!h) return;
+    const idx=new Map(h.d.map((d,j)=>[d,j])); let base=null;
+    const data=labels.map(d=>{ const j=idx.get(d); if(j==null||!ok(h.a[j])||h.a[j]<=0) return null; if(base==null) base=h.a[j]; return h.a[j]/base*100; });
+    if(base==null) return;
+    const c=css(cores[i%cores.length]); const last=[...data].reverse().find(ok);
+    ds.push({label:x.ticker,data,borderColor:c,backgroundColor:c,borderWidth:2,pointRadius:0,tension:.1,spanGaps:true});
+    leg.push(`<span><i style="background:${c}"></i>${esc(x.ticker)} <b class="mono">${fN(last,0)}</b></span>`);
+  });
+  $('#cp-leg').innerHTML=leg.join('');
+  const o=chartOpts(v=>fN(v,0));
+  if(window.Chart) S.charts.cp=new Chart($('#ch-cp'),{type:'line',data:{labels,datasets:ds},options:o});
+}
+function cpAbrir(t){ const r=byTk(t); if(!r||cpFora(r)) { setTab('comparar'); return; }
+  S.cp.mercado=r.mercado||'Brasil'; S.cp.setor=cpSetor(r); S.cp.fora=[]; S.cp.extra=[];
+  const {lista}=cpSelecao(); if(!lista.some(x=>x.ticker===t||x.empresa===r.empresa)) S.cp.extra=[t];
+  setTab('comparar'); window.scrollTo({top:0}); }
+document.addEventListener('click',e=>{
+  const a=e.target.closest('[data-cpanos],[data-cprm],[data-cpx],[data-cpvolta],[data-cpabre]'); if(!a) return;
+  const d=a.dataset; e.preventDefault(); e.stopPropagation();
+  if(d.cpanos){ S.cp.anos=d.cpanos; }
+  else if(d.cprm){ if(S.cp.extra.includes(d.cprm)) S.cp.extra=S.cp.extra.filter(t=>t!==d.cprm); else S.cp.fora.push(d.cprm); }
+  else if(d.cpx){ S.cp.extra=S.cp.extra.filter(t=>t!==d.cpx); }
+  else if(d.cpvolta){ S.cp.fora=[]; }
+  else if(d.cpabre){ cpAbrir(d.cpabre); return; }
+  render();
+},true);
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.dataset.cp){ const k=el.dataset.cp; S.cp[k]=el.value;
+    if(k==='mercado'){ S.cp.setor=cpSetores(el.value)[0]?.[0]||''; if(el.value==='EUA'&&cpSetores('EUA').some(s=>s[0]==='Technology')) S.cp.setor='Technology'; }
+    if(k==='mercado'||k==='setor'){ S.cp.fora=[]; S.cp.extra=[]; }
+    render(); }
+  if(el.id==='cp-add'){ const t=el.value.trim().toUpperCase(); if(byTk(t)&&!S.cp.extra.includes(t)){ S.cp.fora=S.cp.fora.filter(x=>x!==t); S.cp.extra.push(t); render(); } else if(t) el.setCustomValidity('Ação não encontrada'); }
+});
 
 // ===================== eventos =====================
 document.addEventListener('click',e=>{
