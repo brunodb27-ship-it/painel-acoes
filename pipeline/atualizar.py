@@ -34,6 +34,7 @@ import historico as H  # noqa: E402
 import score as SC  # noqa: E402
 import diario as DI  # noqa: E402
 import qualidade as Q  # noqa: E402
+import sec as SEC  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
 SAIDA = RAIZ / "docs" / "data"
@@ -200,38 +201,151 @@ def serie_yahoo(sym: str) -> dict:
 
 
 # ------------------------------------------------------------------ EUA
+# S&P 500 + S&P MidCap 400 (lista da Wikipedia, atualizada a cada rodada) + o que estiver em pipeline/eua.txt.
+INDICES_EUA = (("S&P 500", "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", 450),
+               ("S&P MidCap 400", "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies", 350))
+# setores da lista (padrão GICS) com o mesmo nome que o Yahoo usa
+GICS = {"Information Technology": "Technology", "Health Care": "Healthcare", "Financials": "Financial Services",
+        "Consumer Discretionary": "Consumer Cyclical", "Consumer Staples": "Consumer Defensive",
+        "Communication Services": "Communication Services", "Industrials": "Industrials", "Energy": "Energy",
+        "Materials": "Basic Materials", "Real Estate": "Real Estate", "Utilities": "Utilities"}
+INFO_POR_RODADA = 400        # fichas do Yahoo renovadas por rodada (as demais usam a última guardada)
+INFO_TEMPO_MAX = 14 * 60     # e no máximo 14 minutos nisso
+INFO_CAMPOS = ["longName", "shortName", "sector", "industry", "quoteType", "marketCap", "enterpriseValue",
+               "trailingEps", "bookValue", "trailingPE", "priceToBook", "priceToSalesTrailing12Months",
+               "enterpriseToEbitda", "returnOnEquity", "grossMargins", "operatingMargins", "profitMargins",
+               "totalDebt", "totalCash", "ebitda", "currentRatio", "netIncomeToCommon", "totalRevenue",
+               "sharesOutstanding"]
+
+
+def lista_eua() -> tuple[list[str], dict]:
+    """Códigos dos EUA a acompanhar. Se a Wikipedia falhar, usa a última lista boa guardada."""
+    import io
+    arq = SAIDA / "eua_lista.json"
+    try:
+        antiga = json.loads(arq.read_text()).get("acoes", {})
+    except Exception:  # noqa: BLE001
+        antiga = {}
+    extras = [l.split("#")[0].strip().upper() for l in (Path(__file__).parent / "eua.txt").read_text().splitlines()]
+    extras = [t for t in extras if t]
+    nova = {}
+    for nome, url, minimo in INDICES_EUA:
+        achou = {}
+        try:
+            r = requests.get(url, timeout=60, headers={"User-Agent": "Mozilla/5.0 (painel-acoes; github actions)"})
+            r.raise_for_status()
+            for tb in pd.read_html(io.StringIO(r.text)):
+                cols = {str(c).strip().lower(): c for c in tb.columns}
+                c_tk = next((cols[k] for k in ("symbol", "ticker", "ticker symbol") if k in cols), None)
+                if c_tk is None or len(tb) < minimo:
+                    continue
+                c_nm = next((cols[k] for k in ("security", "company") if k in cols), None)
+                c_st = next((c for k, c in cols.items() if "gics sector" in k), None)
+                for _, x in tb.iterrows():
+                    t = str(x[c_tk]).strip().upper().replace(".", "-")
+                    if not t or t == "NAN" or len(t) > 6:
+                        continue
+                    achou[t] = {"indice": nome, "nome": str(x[c_nm]).strip() if c_nm is not None else t,
+                                "setor": GICS.get(str(x[c_st]).strip(), "") if c_st is not None else ""}
+                break
+            if len(achou) < minimo:
+                raise ValueError(f"só {len(achou)} códigos na página")
+            log(f"lista {nome}: {len(achou)} empresas")
+        except Exception as e:  # noqa: BLE001
+            achou = {t: v for t, v in antiga.items() if v.get("indice") == nome}
+            log(f"lista {nome} falhou ({e}); usando a guardada com {len(achou)}")
+        for t, v in achou.items():
+            nova.setdefault(t, v)
+    if nova:
+        arq.write_text(json.dumps({"atualizado": HOJE.isoformat(), "acoes": nova}, ensure_ascii=False, separators=(",", ":")))
+    return extras + [t for t in sorted(nova) if t not in extras], nova
+
+
+def linha_eua(t: str, res: dict, info: dict, lst: dict) -> dict:
+    """Uma linha do indicadores.json para um ativo dos EUA. Os múltiplos da ficha do Yahoo
+    são corrigidos pelo preço de hoje (a ficha pode ser de alguns dias atrás)."""
+    g = lambda k: info.get(k)  # noqa: E731
+    preco, p0 = res.get("preco"), g("_preco")
+    k = preco / p0 if preco and p0 else 1.0
+    esc = lambda v: v * k if v is not None else None  # noqa: E731
+    debt, cash, ebitda = g("totalDebt"), g("totalCash"), g("ebitda")
+    dl = (debt - cash) if debt is not None and cash is not None else None
+    mc, ev = g("marketCap"), g("enterpriseValue")
+    mc_hoje = esc(mc)
+    ev_hoje = ev + (mc_hoje - mc) if ev is not None and mc is not None else None
+    ev_ebitda = g("enterpriseToEbitda") * ev_hoje / ev if g("enterpriseToEbitda") is not None and ev_hoje and ev else None
+    banco = (g("sector") == "Financial Services") and ("Bank" in (g("industry") or ""))
+    setor = g("sector") or ("ETF" if g("quoteType") == "ETF" else lst.get("setor", ""))
+    return {**res, "ticker": t, "empresa": g("longName") or g("shortName") or lst.get("nome") or t,
+            "setor": setor, "segmento": g("industry") or "", "tipo": g("quoteType") or "", "banco": banco,
+            "mercado": "EUA", "moeda": "USD", "valor_mercado": mc_hoje, "lpa": g("trailingEps"), "vpa": g("bookValue"),
+            "pl": esc(g("trailingPE")), "pvp": esc(g("priceToBook")), "psr": esc(g("priceToSalesTrailing12Months")),
+            "roe": g("returnOnEquity"), "m_bruta": g("grossMargins"), "m_ebit": g("operatingMargins"),
+            "m_liq": g("profitMargins"), "ev_ebitda": ev_ebitda, "div_liq": dl,
+            "div_liq_ebitda": (dl / ebitda) if dl is not None and ebitda else None,
+            "liq_corrente": g("currentRatio"), "lucro_12m": g("netIncomeToCommon"),
+            "receita_12m": g("totalRevenue"), "ebitda_12m": ebitda, "divida_bruta": debt, "caixa": cash,
+            "acoes": g("sharesOutstanding")}
+
+
 def eua() -> tuple[list[dict], dict]:
-    """Ações e ETFs dos EUA listados em pipeline/eua.txt (um código por linha; # comenta)."""
+    """S&P 500 + MidCap 400 + pipeline/eua.txt: cotações de todos; ficha do Yahoo renovada aos poucos."""
     import yfinance as yf
 
-    lista = [l.split("#")[0].strip().upper() for l in (Path(__file__).parent / "eua.txt").read_text().splitlines()]
-    lista = [t for t in lista if t]
+    lista, lst = lista_eua()
     resumo, hist = cotacoes(lista, sufixo="")
-    linhas = []
-    for t in lista:
-        if t not in resumo:
-            continue
+    arq = SAIDA / "eua_info.json"
+    try:
+        cache = json.loads(arq.read_text())
+    except Exception:  # noqa: BLE001
+        cache = {}
+    vivos = [t for t in lista if t in resumo]
+    fila = [t for t in vivos if t not in cache] + sorted((t for t in vivos if t in cache), key=lambda t: cache[t].get("_em", ""))
+    t0, feitos, erros_seguidos = time.time(), 0, 0
+    for t in fila[:INFO_POR_RODADA]:
+        if time.time() - t0 > INFO_TEMPO_MAX:
+            log("fichas dos EUA: tempo esgotado, o resto fica para a próxima rodada")
+            break
+        if erros_seguidos >= 15:
+            log("fichas dos EUA: Yahoo recusando seguidamente, o resto fica para a próxima rodada")
+            break
         try:
             info = yf.Ticker(t).info or {}
+            erros_seguidos = 0
         except Exception as e:  # noqa: BLE001
-            log("info", t, e); info = {}
-        g = lambda k: info.get(k)
-        debt, cash, ebitda = g("totalDebt"), g("totalCash"), g("ebitda")
-        dl = (debt - cash) if debt is not None and cash is not None else None
-        banco = (g("sector") == "Financial Services") and ("Bank" in (g("industry") or ""))
-        r = {**resumo[t], "ticker": t, "empresa": g("longName") or g("shortName") or t,
-             "setor": g("sector") or ("ETF" if g("quoteType") == "ETF" else ""), "segmento": g("industry") or "",
-             "tipo": g("quoteType") or "", "banco": banco, "mercado": "EUA", "moeda": "USD",
-             "valor_mercado": g("marketCap"), "lpa": g("trailingEps"), "vpa": g("bookValue"),
-             "pl": g("trailingPE"), "pvp": g("priceToBook"), "psr": g("priceToSalesTrailing12Months"),
-             "roe": g("returnOnEquity"), "m_bruta": g("grossMargins"), "m_ebit": g("operatingMargins"),
-             "m_liq": g("profitMargins"), "ev_ebitda": g("enterpriseToEbitda"), "div_liq": dl,
-             "div_liq_ebitda": (dl / ebitda) if dl is not None and ebitda else None,
-             "liq_corrente": g("currentRatio"), "lucro_12m": g("netIncomeToCommon"),
-             "receita_12m": g("totalRevenue"), "ebitda_12m": ebitda, "divida_bruta": debt, "caixa": cash,
-             "acoes": g("sharesOutstanding")}
-        linhas.append(r)
+            log("info", t, e)
+            erros_seguidos += 1
+            time.sleep(2)
+            continue
+        if info:
+            ficha = {k: info.get(k) for k in INFO_CAMPOS if info.get(k) is not None}
+            ficha["_preco"] = info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+            ficha["_em"] = HOJE.isoformat()
+            cache[t] = ficha
+            feitos += 1
         time.sleep(0.4)
+    log(f"fichas dos EUA: {feitos} renovadas; {sum(1 for t in vivos if t in cache)} de {len(vivos)} com ficha")
+    cache = {t: v for t, v in cache.items() if t in resumo}
+    arq.write_text(json.dumps(cache, ensure_ascii=False, separators=(",", ":")))
+    # sem ficha ainda: aproveita a linha da rodada anterior, com os múltiplos corrigidos pelo preço de hoje
+    try:
+        prev = {r["ticker"]: r for r in json.loads((SAIDA / "indicadores.json").read_text()) if r.get("mercado") == "EUA"}
+    except Exception:  # noqa: BLE001
+        prev = {}
+
+    def linha(t):
+        if t in cache:
+            return linha_eua(t, resumo[t], cache[t], lst.get(t, {}))
+        p = prev.get(t)
+        if p and p.get("preco") and resumo[t].get("preco"):
+            k = resumo[t]["preco"] / p["preco"]
+            r = {**p, **resumo[t]}
+            for c in ("valor_mercado", "pl", "pvp", "psr"):
+                r[c] = p[c] * k if p.get(c) is not None else None
+            return r
+        return linha_eua(t, resumo[t], {}, lst.get(t, {}))
+
+    linhas = [linha(t) for t in vivos]
     return linhas, hist
 
 
@@ -450,7 +564,23 @@ def main():
                                   tk, log, apagar_zip=not a.local)
         ult = H.ultimo_ano_completo(anual) or dfp_ano
         cnpj_de = dict(zip(b["ticker"], b["cnpj"]))
-        rk = H.ranking(linhas, hist if hist else _ler_hist(), anual, ult, HOJE.strftime("%Y-%m"), cnpj_de)
+        # balanços anuais dos EUA (SEC) entram no ranking como se fossem mais empresas do anual
+        anual_rk, cnpj_rk = anual, cnpj_de
+        try:
+            us_rows = [r for r in linhas if r.get("mercado") == "EUA" and r.get("setor") not in ("ETF", "Índice")]
+            us_dados, cik_de = SEC.atualizar(SAIDA / "anual_eua.json", [r["ticker"] for r in us_rows], ult, log)
+            banco_de = {r["ticker"]: bool(r.get("banco")) for r in us_rows}
+            extra, mapa = {}, {}
+            for t, cik in cik_de.items():
+                if us_dados.get(cik):
+                    extra["SEC" + cik] = {y: {**reg, "banco": banco_de.get(t, False)} for y, reg in us_dados[cik].items()}
+                    mapa[t] = "SEC" + cik
+            anual_rk = {**anual, "dados": {**anual.get("dados", {}), **extra}}
+            cnpj_rk = {**cnpj_de, **mapa}
+            log("SEC:", len(mapa), "ações dos EUA com balanço anual")
+        except Exception as e:  # noqa: BLE001
+            log("SEC falhou, ranking dos EUA segue só com preço e dividendos:", e)
+        rk = H.ranking(linhas, hist if hist else _ler_hist(), anual_rk, ult, HOJE.strftime("%Y-%m"), cnpj_rk)
         (SAIDA / "ranking.json").write_text(json.dumps(rk, ensure_ascii=False, separators=(",", ":")))
         log("ranking:", len(rk["dados"]), "ativos; balanços", rk["primeiro_balanco"], "a", ult)
         try:
