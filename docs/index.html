@@ -600,8 +600,8 @@ function vBuscador(){
 const RK_CRIT=[
   ['Retorno',[['ret_total','Retorno total (preço + dividendos)','p'],['ret_preco','Valorização só do preço','p'],['cagr_total','Retorno médio por ano (com dividendos)','p']]],
   ['Dividendos',[['dy_medio','Dividend yield médio por ano','p'],['anos_div','Anos pagando dividendos','a']]],
-  ['Rentabilidade (só B3)',[['m_ebit_med','Margem operacional (EBIT) média','p'],['m_liq_med','Margem líquida média','p'],['roe_med','ROE médio','p'],['anos_lucro','Anos com lucro','a']]],
-  ['Crescimento (só B3)',[['cagr_receita','Crescimento da receita por ano','p'],['cagr_lucro','Crescimento do lucro por ano','p']]],
+  ['Rentabilidade',[['m_ebit_med','Margem operacional (EBIT) média','p'],['m_liq_med','Margem líquida média','p'],['roe_med','ROE médio','p'],['anos_lucro','Anos com lucro','a']]],
+  ['Crescimento',[['cagr_receita','Crescimento da receita por ano','p'],['cagr_lucro','Crescimento do lucro por ano','p']]],
 ];
 const RK_INFO=Object.fromEntries(RK_CRIT.flatMap(([,l])=>l.map(([k,lab,t])=>[k,{lab,t}])));
 const RK_COLS=[['ret_total','Retorno total'],['cagr_total','Ao ano'],['dy_medio','DY médio'],['m_ebit_med','Marg. EBIT méd.'],['roe_med','ROE méd.'],['anos_lucro','Anos c/ lucro']];
@@ -662,7 +662,7 @@ function vRank(){
   return head+`<section class="card"><div class="card-h"><h2>${esc(info.lab)}</h2><span class="note">${list.length} ativo(s) · ${periodo} · clique numa linha para abrir a ação</span></div>${aviso}
    <div class="tbl-wrap tbl-scroll"><table><thead><tr><th class="l">#</th><th class="l">Ação</th><th class="l">Setor</th><th class="hl">${esc(info.lab.replace(/ \(.*\)/,''))}</th>${cols.map(([c,l])=>`<th>${l}</th>`).join('')}</tr></thead>
    <tbody>${show.map(({r,m},i)=>`<tr data-open="${esc(r.ticker)}"><td class="l rk-n">${i+1}</td><td class="l"><span class="tk">${esc(r.ticker)}</span>${r.moeda==='USD'?'<span class="chip" style="margin-left:6px;padding:0 6px">EUA</span>':''}<div class="co">${esc(r.empresa)}</div></td><td class="l"><span class="co set" title="${esc(r.setor||'')}">${esc((r.setor||'').replace(/^Emp\. Adm\. Part\. - /,''))}</span></td><td class="hl">${rkFmt(m[k],k,n)}</td>${cols.map(([c])=>`<td class="${['ret_total','cagr_total'].includes(c)?cls(m[c]):''}">${rkFmt(m[c],c,n)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length+4}" class="l muted">Nenhum ativo com esses filtros.</td></tr>`}</tbody></table></div></section>
-  <p class="note">Retornos usam o preço ajustado por desdobramentos e bonificações; ativos com saltos de preço impossíveis de um mês para o outro (erro de dado) ficam fora dos rankings de retorno; o retorno total considera os dividendos reinvestidos. Dividend yield médio: na B3, proventos declarados à CVM no ano ÷ valor de mercado no fim do ano; nos EUA e nos ETFs, dividendos pagos ÷ preço médio do ano. Margens, ROE e crescimento vêm dos balanços anuais da CVM (só empresas da B3; bancos não têm margem nem receita comparável). EUA em dólar.</p>`;
+  <p class="note">Retornos usam o preço ajustado por desdobramentos e bonificações; ativos com saltos de preço impossíveis de um mês para o outro (erro de dado) ficam fora dos rankings de retorno; o retorno total considera os dividendos reinvestidos. Dividend yield médio: na B3, proventos declarados à CVM no ano ÷ valor de mercado no fim do ano; nos EUA e nos ETFs, dividendos pagos ÷ preço médio do ano. Margens, ROE e crescimento vêm dos balanços anuais: CVM para a B3 e SEC para os EUA, desde 2009 (bancos não têm margem nem receita comparável; empresas estrangeiras que reportam em IFRS, como ASML e TSMC, ficam sem histórico de balanço). EUA em dólar.</p>`;
 }
 function mesTxt(ym,deltaAnos){ const y=+ym.slice(0,4)+deltaAnos, m=ym.slice(5,7); return m+'/'+y; }
 
