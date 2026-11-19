@@ -2,7 +2,8 @@
 
    on:
      schedule:
-       - cron: "30 22 * * 1-5"   # 19h30 de Brasília, dias úteis (depois do fechamento)
+       - cron: "7 22 * * 1-5"    # 19h07 de Brasília, dias úteis (depois do fechamento)
+       - cron: "17 1 * * 2-6"    # 22h17 de Brasília, segunda tentativa se a primeira atrasar
      workflow_dispatch: {}        # botão "Run workflow" para rodar na hora
 
    permissions:
@@ -15,7 +16,7 @@
    jobs:
      atualizar:
        runs-on: ubuntu-latest
-       timeout-minutes: 40
+       timeout-minutes: 75
        steps:
          - uses: actions/checkout@v4
 
